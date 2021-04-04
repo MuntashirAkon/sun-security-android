@@ -43,6 +43,7 @@ import java.util.HashSet;
 import javax.security.auth.x500.X500Principal;
 
 import android.sun.misc.HexDumpEncoder;
+import android.sun.security.util.DerValue;
 
 /**
  * <p>Abstract class for a revoked certificate in a CRL.
@@ -131,10 +132,10 @@ public class X509CRLEntryImpl extends X509CRLEntry {
     /**
      * Unmarshals a revoked certificate from its encoded form.
      *
-     * @param derVal the DER value containing the revoked certificate.
+     * @param derValue the DER value containing the revoked certificate.
      * @exception CRLException on parsing errors.
      */
-    public X509CRLEntryImpl(android.sun.security.util.DerValue derValue) throws CRLException {
+    public X509CRLEntryImpl(DerValue derValue) throws CRLException {
         try {
             parse(derValue);
         } catch (IOException e) {
@@ -500,10 +501,10 @@ public class X509CRLEntryImpl extends X509CRLEntry {
             getExtension(PKIXExtensions.CertificateIssuer_Id);
     }
 
-    public Map<String, java.security.cert.Extension> getExtensions() {
-        Collection<android.sun.security.x509.Extension> exts = extensions.getAllExtensions();
-        HashMap<String, java.security.cert.Extension> map =
-            new HashMap<String, java.security.cert.Extension>(exts.size());
+    // ANDROID: java.security.cert.Extension is not available before API 24
+    public Map<String, Extension> getExtensions() {
+        Collection<Extension> exts = extensions.getAllExtensions();
+        HashMap<String, Extension> map = new HashMap<String, Extension>(exts.size());
         for (Extension ext : exts) {
             map.put(ext.getId(), ext);
         }

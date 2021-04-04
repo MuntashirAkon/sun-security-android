@@ -25,6 +25,7 @@
 
 package android.sun.security.x509;
 
+import android.os.Build;
 import android.sun.security.util.DerOutputStream;
 
 import java.io.IOException;
@@ -222,13 +223,18 @@ public class CRLReasonCodeExtension extends Extension
 
     /**
      * Return the reason as a CRLReason enum.
+     *
+     * @throws UnsupportedOperationException If the Android API version is less than 24 and
+     *                                       no valid reason has been found.
      */
     public CRLReason getReasonCode() {
         // if out-of-range, return UNSPECIFIED
         if (reasonCode > 0 && reasonCode < values.length) {
             return values[reasonCode];
         } else {
-            return CRLReason.UNSPECIFIED;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                return CRLReason.UNSPECIFIED;
+            } else throw new UnsupportedOperationException("Invalid reason.");
         }
     }
 }

@@ -26,6 +26,7 @@
 package android.sun.security.x509;
 
 import android.sun.security.util.DerValue;
+import android.sun.security.util.ObjectIdentifier;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -59,9 +60,10 @@ import java.util.Arrays;
  * @author Amit Kapoor
  * @author Hemma Prafullchandra
  */
-public class Extension implements java.security.cert.Extension {
+// ANDROID: java.security.cert.Extension is not available before API 24
+public class Extension /* implements java.security.cert.Extension */ {
 
-    protected android.sun.security.util.ObjectIdentifier extensionId = null;
+    protected ObjectIdentifier extensionId = null;
     protected boolean           critical = false;
     protected byte[]            extensionValue = null;
 
@@ -102,7 +104,7 @@ public class Extension implements java.security.cert.Extension {
      * @param critical the boolean indicating if the extension is critical
      * @param extensionValue the DER encoded octet string of the value.
      */
-    public Extension(android.sun.security.util.ObjectIdentifier extensionId, boolean critical,
+    public Extension(ObjectIdentifier extensionId, boolean critical,
                      byte[] extensionValue) throws IOException {
         this.extensionId = extensionId;
         this.critical = critical;
@@ -133,7 +135,7 @@ public class Extension implements java.security.cert.Extension {
      * @param rawExtensionValue the raw DER-encoded extension value (this
      * is not the encoded OctetString).
      */
-    public static Extension newExtension(android.sun.security.util.ObjectIdentifier extensionId,
+    public static Extension newExtension(ObjectIdentifier extensionId,
                                          boolean critical, byte[] rawExtensionValue) throws IOException {
         Extension ext = new Extension();
         ext.extensionId = extensionId;
@@ -193,7 +195,7 @@ public class Extension implements java.security.cert.Extension {
     /**
      * Returns the ObjectIdentifier of the extension.
      */
-    public android.sun.security.util.ObjectIdentifier getExtensionId() {
+    public ObjectIdentifier getExtensionId() {
         return extensionId;
     }
 

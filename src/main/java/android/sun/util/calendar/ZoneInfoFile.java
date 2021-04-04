@@ -25,6 +25,8 @@
 
 package android.sun.util.calendar;
 
+import android.os.Build;
+
 import  java.io.File;
 import  java.io.FileInputStream;
 import  java.io.FileNotFoundException;
@@ -479,7 +481,9 @@ public class ZoneInfoFile {
                 String zi = System.getProperty("java.home") +
                     File.separator + "lib" + File.separator + "zi";
                 try {
-                    zi = FileSystems.getDefault().getPath(zi).toRealPath().toString();
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        zi = FileSystems.getDefault().getPath(zi).toRealPath().toString();
+                    }
                 } catch(Exception e) {
                 }
                 return zi;

@@ -207,7 +207,8 @@ public class InvalidityDateExtension extends Extension
         return NAME;
     }
 
-    public static InvalidityDateExtension toImpl(java.security.cert.Extension ext)
+    // ANDROID: java.security.cert.Extension is not available before API 24
+    public static InvalidityDateExtension toImpl(Extension ext)
         throws IOException {
         if (ext instanceof InvalidityDateExtension) {
             return (InvalidityDateExtension) ext;
