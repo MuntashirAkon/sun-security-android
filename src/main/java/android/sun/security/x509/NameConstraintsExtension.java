@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2020 Muntashir Al-Islam
  * Copyright (c) 1997, 2006, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
@@ -25,17 +26,15 @@
 
 package android.sun.security.x509;
 
+import android.sun.security.pkcs.PKCS9Attribute;
+import android.sun.security.util.DerOutputStream;
 import android.sun.security.util.DerValue;
+
+import androidx.annotation.NonNull;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
-import java.util.*;
-
-import javax.security.auth.x500.X500Principal;
-
-import android.sun.security.pkcs.PKCS9Attribute;
+import java.util.Enumeration;
 
 /**
  * This class defines the Name Constraints Extension.
@@ -58,11 +57,12 @@ import android.sun.security.pkcs.PKCS9Attribute;
  *
  * @author Amit Kapoor
  * @author Hemma Prafullchandra
- * @see android.sun.security.x509.Extension
- * @see android.sun.security.x509.CertAttrSet
+ * @see Extension
+ * @see CertAttrSet
  */
-public class NameConstraintsExtension extends Extension
-implements CertAttrSet<String>, Cloneable {
+
+@SuppressWarnings("unused")
+public class NameConstraintsExtension extends Extension implements CertAttrSet<String>, Cloneable {
     /**
      * Identifier for this attribute, to be used with the
      * get, set, delete methods of Certificate, x509 type.
@@ -79,62 +79,29 @@ implements CertAttrSet<String>, Cloneable {
     private static final byte TAG_PERMITTED = 0;
     private static final byte TAG_EXCLUDED = 1;
 
-    private android.sun.security.x509.GeneralSubtrees permitted = null;
-    private android.sun.security.x509.GeneralSubtrees excluded = null;
-
-    private boolean hasMin;
-    private boolean hasMax;
-    private boolean minMaxValid = false;
-
-    // Recalculate hasMin and hasMax flags.
-    private void calcMinMax() throws IOException {
-        hasMin = false;
-        hasMax = false;
-        if (excluded != null) {
-            for (int i = 0; i < excluded.size(); i++) {
-                android.sun.security.x509.GeneralSubtree subtree = excluded.get(i);
-                if (subtree.getMinimum() != 0)
-                    hasMin = true;
-                if (subtree.getMaximum() != -1)
-                    hasMax = true;
-            }
-        }
-
-        if (permitted != null) {
-            for (int i = 0; i < permitted.size(); i++) {
-                android.sun.security.x509.GeneralSubtree subtree = permitted.get(i);
-                if (subtree.getMinimum() != 0)
-                    hasMin = true;
-                if (subtree.getMaximum() != -1)
-                    hasMax = true;
-            }
-        }
-        minMaxValid = true;
-    }
+    private GeneralSubtrees permitted = null;
+    private GeneralSubtrees excluded = null;
 
     // Encode this extension value.
     private void encodeThis() throws IOException {
-        minMaxValid = false;
         if (permitted == null && excluded == null) {
             this.extensionValue = null;
             return;
         }
-        android.sun.security.util.DerOutputStream seq = new android.sun.security.util.DerOutputStream();
+        DerOutputStream seq = new DerOutputStream();
 
-        android.sun.security.util.DerOutputStream tagged = new android.sun.security.util.DerOutputStream();
+        DerOutputStream tagged = new DerOutputStream();
         if (permitted != null) {
-            android.sun.security.util.DerOutputStream tmp = new android.sun.security.util.DerOutputStream();
+            DerOutputStream tmp = new DerOutputStream();
             permitted.encode(tmp);
-            tagged.writeImplicit(android.sun.security.util.DerValue.createTag(android.sun.security.util.DerValue.TAG_CONTEXT,
-                                 true, TAG_PERMITTED), tmp);
+            tagged.writeImplicit(DerValue.createTag(DerValue.TAG_CONTEXT, true, TAG_PERMITTED), tmp);
         }
         if (excluded != null) {
-            android.sun.security.util.DerOutputStream tmp = new android.sun.security.util.DerOutputStream();
+            DerOutputStream tmp = new DerOutputStream();
             excluded.encode(tmp);
-            tagged.writeImplicit(DerValue.createTag(android.sun.security.util.DerValue.TAG_CONTEXT,
-                                 true, TAG_EXCLUDED), tmp);
+            tagged.writeImplicit(DerValue.createTag(DerValue.TAG_CONTEXT, true, TAG_EXCLUDED), tmp);
         }
-        seq.write(android.sun.security.util.DerValue.tag_Sequence, tagged);
+        seq.write(DerValue.tag_Sequence, tagged);
         this.extensionValue = seq.toByteArray();
     }
 
@@ -144,15 +111,13 @@ implements CertAttrSet<String>, Cloneable {
      * is set to true.
      *
      * @param permitted the permitted GeneralSubtrees (null for optional).
-     * @param excluded the excluded GeneralSubtrees (null for optional).
+     * @param excluded  the excluded GeneralSubtrees (null for optional).
      */
-    public NameConstraintsExtension(android.sun.security.x509.GeneralSubtrees permitted,
-                                    android.sun.security.x509.GeneralSubtrees excluded)
-    throws IOException {
+    public NameConstraintsExtension(GeneralSubtrees permitted, GeneralSubtrees excluded) throws IOException {
         this.permitted = permitted;
         this.excluded = excluded;
 
-        this.extensionId = android.sun.security.x509.PKIXExtensions.NameConstraints_Id;
+        this.extensionId = PKIXExtensions.NameConstraints_Id;
         this.critical = true;
         encodeThis();
     }
@@ -161,20 +126,18 @@ implements CertAttrSet<String>, Cloneable {
      * Create the extension from the passed DER encoded value.
      *
      * @param critical true if the extension is to be treated as critical.
-     * @param value an array of DER encoded bytes of the actual value.
-     * @exception ClassCastException if value is not an array of bytes
-     * @exception IOException on error.
+     * @param value    an array of DER encoded bytes of the actual value.
+     * @throws ClassCastException if value is not an array of bytes
+     * @throws IOException        on error.
      */
-    public NameConstraintsExtension(Boolean critical, Object value)
-    throws IOException {
-        this.extensionId = android.sun.security.x509.PKIXExtensions.NameConstraints_Id;
-        this.critical = critical.booleanValue();
+    public NameConstraintsExtension(Boolean critical, Object value) throws IOException {
+        this.extensionId = PKIXExtensions.NameConstraints_Id;
+        this.critical = critical;
 
         this.extensionValue = (byte[]) value;
-        android.sun.security.util.DerValue val = new android.sun.security.util.DerValue(this.extensionValue);
-        if (val.tag != android.sun.security.util.DerValue.tag_Sequence) {
-            throw new IOException("Invalid encoding for" +
-                                  " NameConstraintsExtension.");
+        DerValue val = new DerValue(this.extensionValue);
+        if (val.tag != DerValue.tag_Sequence) {
+            throw new IOException("Invalid encoding for NameConstraintsExtension.");
         }
 
         // NB. this is always encoded with the IMPLICIT tag
@@ -186,51 +149,46 @@ implements CertAttrSet<String>, Cloneable {
         if (val.data == null)
             return;
         while (val.data.available() != 0) {
-            android.sun.security.util.DerValue opt = val.data.getDerValue();
+            DerValue opt = val.data.getDerValue();
 
             if (opt.isContextSpecific(TAG_PERMITTED) && opt.isConstructed()) {
                 if (permitted != null) {
-                    throw new IOException("Duplicate permitted " +
-                         "GeneralSubtrees in NameConstraintsExtension.");
+                    throw new IOException("Duplicate permitted GeneralSubtrees in NameConstraintsExtension.");
                 }
-                opt.resetTag(android.sun.security.util.DerValue.tag_Sequence);
-                permitted = new android.sun.security.x509.GeneralSubtrees(opt);
+                opt.resetTag(DerValue.tag_Sequence);
+                permitted = new GeneralSubtrees(opt);
 
             } else if (opt.isContextSpecific(TAG_EXCLUDED) &&
-                       opt.isConstructed()) {
+                    opt.isConstructed()) {
                 if (excluded != null) {
-                    throw new IOException("Duplicate excluded " +
-                             "GeneralSubtrees in NameConstraintsExtension.");
+                    throw new IOException("Duplicate excluded GeneralSubtrees in NameConstraintsExtension.");
                 }
-                opt.resetTag(android.sun.security.util.DerValue.tag_Sequence);
-                excluded = new android.sun.security.x509.GeneralSubtrees(opt);
+                opt.resetTag(DerValue.tag_Sequence);
+                excluded = new GeneralSubtrees(opt);
             } else
-                throw new IOException("Invalid encoding of " +
-                                      "NameConstraintsExtension.");
+                throw new IOException("Invalid encoding of NameConstraintsExtension.");
         }
-        minMaxValid = false;
     }
 
     /**
      * Return the printable string.
      */
+    @NonNull
     public String toString() {
         return (super.toString() + "NameConstraints: [" +
-                ((permitted == null) ? "" :
-                     ("\n    Permitted:" + permitted.toString())) +
-                ((excluded == null) ? "" :
-                     ("\n    Excluded:" + excluded.toString()))
-                + "   ]\n");
+                ((permitted == null) ? "" : ("\n    Permitted:" + permitted.toString())) +
+                ((excluded == null) ? "" : ("\n    Excluded:" + excluded.toString())) +
+                "   ]\n");
     }
 
     /**
      * Write the extension to the OutputStream.
      *
      * @param out the OutputStream to write the extension to.
-     * @exception IOException on encoding errors.
+     * @throws IOException on encoding errors.
      */
     public void encode(OutputStream out) throws IOException {
-        android.sun.security.util.DerOutputStream tmp = new android.sun.security.util.DerOutputStream();
+        DerOutputStream tmp = new DerOutputStream();
         if (this.extensionValue == null) {
             this.extensionId = PKIXExtensions.NameConstraints_Id;
             this.critical = true;
@@ -245,20 +203,17 @@ implements CertAttrSet<String>, Cloneable {
      */
     public void set(String name, Object obj) throws IOException {
         if (name.equalsIgnoreCase(PERMITTED_SUBTREES)) {
-            if (!(obj instanceof android.sun.security.x509.GeneralSubtrees)) {
-                throw new IOException("Attribute value should be"
-                                    + " of type GeneralSubtrees.");
+            if (!(obj instanceof GeneralSubtrees)) {
+                throw new IOException("Attribute value should be of type GeneralSubtrees.");
             }
-            permitted = (android.sun.security.x509.GeneralSubtrees)obj;
+            permitted = (GeneralSubtrees) obj;
         } else if (name.equalsIgnoreCase(EXCLUDED_SUBTREES)) {
-            if (!(obj instanceof android.sun.security.x509.GeneralSubtrees)) {
-                throw new IOException("Attribute value should be "
-                                    + "of type GeneralSubtrees.");
+            if (!(obj instanceof GeneralSubtrees)) {
+                throw new IOException("Attribute value should be of type GeneralSubtrees.");
             }
-            excluded = (android.sun.security.x509.GeneralSubtrees)obj;
+            excluded = (GeneralSubtrees) obj;
         } else {
-          throw new IOException("Attribute name not recognized by " +
-                        "CertAttrSet:NameConstraintsExtension.");
+            throw new IOException("Attribute name not recognized by CertAttrSet:NameConstraintsExtension.");
         }
         encodeThis();
     }
@@ -272,8 +227,7 @@ implements CertAttrSet<String>, Cloneable {
         } else if (name.equalsIgnoreCase(EXCLUDED_SUBTREES)) {
             return (excluded);
         } else {
-          throw new IOException("Attribute name not recognized by " +
-                        "CertAttrSet:NameConstraintsExtension.");
+            throw new IOException("Attribute name not recognized by CertAttrSet:NameConstraintsExtension.");
         }
     }
 
@@ -286,8 +240,7 @@ implements CertAttrSet<String>, Cloneable {
         } else if (name.equalsIgnoreCase(EXCLUDED_SUBTREES)) {
             excluded = null;
         } else {
-          throw new IOException("Attribute name not recognized by " +
-                        "CertAttrSet:NameConstraintsExtension.");
+            throw new IOException("Attribute name not recognized by CertAttrSet:NameConstraintsExtension.");
         }
         encodeThis();
     }
@@ -297,7 +250,7 @@ implements CertAttrSet<String>, Cloneable {
      * attribute.
      */
     public Enumeration<String> getElements() {
-        android.sun.security.x509.AttributeNameEnumeration elements = new AttributeNameEnumeration();
+        AttributeNameEnumeration elements = new AttributeNameEnumeration();
         elements.addElement(PERMITTED_SUBTREES);
         elements.addElement(EXCLUDED_SUBTREES);
 
@@ -330,12 +283,11 @@ implements CertAttrSet<String>, Cloneable {
      * excluded subtrees state variable to the union of its previous
      * value and the value indicated in the extension field.
      * <p>
+     *
      * @param newConstraints additional NameConstraints to be applied
      * @throws IOException on error
      */
-    public void merge(NameConstraintsExtension newConstraints)
-            throws IOException {
-
+    public void merge(NameConstraintsExtension newConstraints) throws IOException {
         if (newConstraints == null) {
             // absence of any explicit constraints implies unconstrained
             return;
@@ -347,11 +299,9 @@ implements CertAttrSet<String>, Cloneable {
          * value and the value indicated in the extension field.
          */
 
-        android.sun.security.x509.GeneralSubtrees newExcluded =
-                        (android.sun.security.x509.GeneralSubtrees)newConstraints.get(EXCLUDED_SUBTREES);
+        GeneralSubtrees newExcluded = (GeneralSubtrees) newConstraints.get(EXCLUDED_SUBTREES);
         if (excluded == null) {
-            excluded = (newExcluded != null) ?
-                        (android.sun.security.x509.GeneralSubtrees)newExcluded.clone() : null;
+            excluded = (newExcluded != null) ? (GeneralSubtrees) newExcluded.clone() : null;
         } else {
             if (newExcluded != null) {
                 // Merge new excluded with current excluded (union)
@@ -365,11 +315,9 @@ implements CertAttrSet<String>, Cloneable {
          * previous value and the value indicated in the extension field.
          */
 
-        android.sun.security.x509.GeneralSubtrees newPermitted =
-                (android.sun.security.x509.GeneralSubtrees)newConstraints.get(PERMITTED_SUBTREES);
+        GeneralSubtrees newPermitted = (GeneralSubtrees) newConstraints.get(PERMITTED_SUBTREES);
         if (permitted == null) {
-            permitted = (newPermitted != null) ?
-                        (android.sun.security.x509.GeneralSubtrees)newPermitted.clone() : null;
+            permitted = (newPermitted != null) ? (GeneralSubtrees) newPermitted.clone() : null;
         } else {
             if (newPermitted != null) {
                 // Merge new permitted with current permitted (intersection)
@@ -380,7 +328,7 @@ implements CertAttrSet<String>, Cloneable {
                     if (excluded != null) {
                         excluded.union(newExcluded);
                     } else {
-                        excluded = (android.sun.security.x509.GeneralSubtrees)newExcluded.clone();
+                        excluded = (GeneralSubtrees) newExcluded.clone();
                     }
                 }
             }
@@ -401,96 +349,15 @@ implements CertAttrSet<String>, Cloneable {
     }
 
     /**
-     * check whether a certificate conforms to these NameConstraints.
-     * This involves verifying that the subject name and subjectAltName
-     * extension (critical or noncritical) is consistent with the permitted
-     * subtrees state variables.  Also verify that the subject name and
-     * subjectAltName extension (critical or noncritical) is consistent with
-     * the excluded subtrees state variables.
-     *
-     * @param cert X509Certificate to be verified
-     * @returns true if certificate verifies successfully
-     * @throws IOException on error
-     */
-    public boolean verify(X509Certificate cert) throws IOException {
-
-        if (cert == null) {
-            throw new IOException("Certificate is null");
-        }
-
-        // Calculate hasMin and hasMax booleans (if necessary)
-        if (!minMaxValid) {
-            calcMinMax();
-        }
-
-        if (hasMin) {
-            throw new IOException("Non-zero minimum BaseDistance in"
-                                + " name constraints not supported");
-        }
-
-        if (hasMax) {
-            throw new IOException("Maximum BaseDistance in"
-                                + " name constraints not supported");
-        }
-
-        X500Principal subjectPrincipal = cert.getSubjectX500Principal();
-        android.sun.security.x509.X500Name subject = android.sun.security.x509.X500Name.asX500Name(subjectPrincipal);
-
-        if (subject.isEmpty() == false) {
-            if (verify(subject) == false) {
-                return false;
-            }
-        }
-
-        android.sun.security.x509.GeneralNames altNames = null;
-        // extract altNames
-        try {
-            // extract extensions, if any, from certInfo
-            // following returns null if certificate contains no extensions
-            android.sun.security.x509.X509CertImpl certImpl = X509CertImpl.toImpl(cert);
-            SubjectAlternativeNameExtension altNameExt =
-                certImpl.getSubjectAlternativeNameExtension();
-            if (altNameExt != null) {
-                // extract altNames from extension; this call does not
-                // return an IOException on null altnames
-                altNames = (GeneralNames)
-                            (altNameExt.get(altNameExt.SUBJECT_NAME));
-            }
-        } catch (CertificateException ce) {
-            throw new IOException("Unable to extract extensions from " +
-                        "certificate: " + ce.getMessage());
-        }
-
-        // If there are no subjectAlternativeNames, perform the special-case
-        // check where if the subjectName contains any EMAILADDRESS
-        // attributes, they must be checked against RFC822 constraints.
-        // If that passes, we're fine.
-        if (altNames == null) {
-            return verifyRFC822SpecialCase(subject);
-        }
-
-        // verify each subjectAltName
-        for (int i = 0; i < altNames.size(); i++) {
-            android.sun.security.x509.GeneralNameInterface altGNI = altNames.get(i).getName();
-            if (!verify(altGNI)) {
-                return false;
-            }
-        }
-
-        // All tests passed.
-        return true;
-    }
-
-    /**
      * check whether a name conforms to these NameConstraints.
      * This involves verifying that the name is consistent with the
      * permitted and excluded subtrees variables.
      *
      * @param name GeneralNameInterface name to be verified
-     * @returns true if certificate verifies successfully
+     * @return true if certificate verifies successfully
      * @throws IOException on error
      */
-    public boolean verify(android.sun.security.x509.GeneralNameInterface name) throws IOException {
+    public boolean verify(GeneralNameInterface name) throws IOException {
         if (name == null) {
             throw new IOException("name is null");
         }
@@ -499,26 +366,26 @@ implements CertAttrSet<String>, Cloneable {
         if (excluded != null && excluded.size() > 0) {
 
             for (int i = 0; i < excluded.size(); i++) {
-                android.sun.security.x509.GeneralSubtree gs = excluded.get(i);
+                GeneralSubtree gs = excluded.get(i);
                 if (gs == null)
                     continue;
-                android.sun.security.x509.GeneralName gn = gs.getName();
+                GeneralName gn = gs.getName();
                 if (gn == null)
                     continue;
-                android.sun.security.x509.GeneralNameInterface exName = gn.getName();
+                GeneralNameInterface exName = gn.getName();
                 if (exName == null)
                     continue;
 
                 // if name matches or narrows any excluded subtree,
                 // return false
                 switch (exName.constrains(name)) {
-                case android.sun.security.x509.GeneralNameInterface.NAME_DIFF_TYPE:
-                case android.sun.security.x509.GeneralNameInterface.NAME_WIDENS: // name widens excluded
-                case android.sun.security.x509.GeneralNameInterface.NAME_SAME_TYPE:
-                    break;
-                case android.sun.security.x509.GeneralNameInterface.NAME_MATCH:
-                case android.sun.security.x509.GeneralNameInterface.NAME_NARROWS: // subject name excluded
-                    return false;
+                    case GeneralNameInterface.NAME_DIFF_TYPE:
+                    case GeneralNameInterface.NAME_WIDENS: // name widens excluded
+                    case GeneralNameInterface.NAME_SAME_TYPE:
+                        break;
+                    case GeneralNameInterface.NAME_MATCH:
+                    case GeneralNameInterface.NAME_NARROWS: // subject name excluded
+                        return false;
                 }
             }
         }
@@ -535,7 +402,7 @@ implements CertAttrSet<String>, Cloneable {
                 GeneralName gn = gs.getName();
                 if (gn == null)
                     continue;
-                android.sun.security.x509.GeneralNameInterface perName = gn.getName();
+                GeneralNameInterface perName = gn.getName();
                 if (perName == null)
                     continue;
 
@@ -543,21 +410,19 @@ implements CertAttrSet<String>, Cloneable {
                 // and Name does not match or narrow some permitted subtree,
                 // return false
                 switch (perName.constrains(name)) {
-                case android.sun.security.x509.GeneralNameInterface.NAME_DIFF_TYPE:
-                    continue; // continue checking other permitted names
-                case android.sun.security.x509.GeneralNameInterface.NAME_WIDENS: // name widens permitted
-                case android.sun.security.x509.GeneralNameInterface.NAME_SAME_TYPE:
-                    sameType = true;
-                    continue; // continue to look for a match or narrow
-                case android.sun.security.x509.GeneralNameInterface.NAME_MATCH:
-                case GeneralNameInterface.NAME_NARROWS:
-                    // name narrows permitted
-                    return true; // name is definitely OK, so break out of loop
+                    case GeneralNameInterface.NAME_DIFF_TYPE:
+                        continue; // continue checking other permitted names
+                    case GeneralNameInterface.NAME_WIDENS: // name widens permitted
+                    case GeneralNameInterface.NAME_SAME_TYPE:
+                        sameType = true;
+                        continue; // continue to look for a match or narrow
+                    case GeneralNameInterface.NAME_MATCH:
+                    case GeneralNameInterface.NAME_NARROWS:
+                        // name narrows permitted
+                        return true; // name is definitely OK, so break out of loop
                 }
             }
-            if (sameType) {
-                return false;
-            }
+            return !sameType;
         }
         return true;
     }
@@ -569,27 +434,27 @@ implements CertAttrSet<String>, Cloneable {
      * NameConstraints.
      *
      * @param subject the certificate's subject name
-     * @returns true if certificate verifies successfully
+     * @return true if certificate verifies successfully
      * @throws IOException on error
      */
+    @SuppressWarnings("deprecation")
     public boolean verifyRFC822SpecialCase(X500Name subject) throws IOException {
-        for (Iterator t = subject.allAvas().iterator(); t.hasNext(); ) {
-            android.sun.security.x509.AVA ava = (AVA)t.next();
+        for (AVA ava : subject.allAvas()) {
             android.sun.security.util.ObjectIdentifier attrOID = ava.getObjectIdentifier();
             if (attrOID.equals(PKCS9Attribute.EMAIL_ADDRESS_OID)) {
                 String attrValue = ava.getValueString();
                 if (attrValue != null) {
-                    android.sun.security.x509.RFC822Name emailName;
+                    RFC822Name emailName;
                     try {
                         emailName = new RFC822Name(attrValue);
                     } catch (IOException ioe) {
                         continue;
                     }
                     if (!verify(emailName)) {
-                        return(false);
+                        return (false);
                     }
                 }
-             }
+            }
         }
         return true;
     }
@@ -597,21 +462,21 @@ implements CertAttrSet<String>, Cloneable {
     /**
      * Clone all objects that may be modified during certificate validation.
      */
+    @NonNull
     public Object clone() {
         try {
-            NameConstraintsExtension newNCE =
-                (NameConstraintsExtension) super.clone();
+            NameConstraintsExtension newNCE = (NameConstraintsExtension) super.clone();
 
             if (permitted != null) {
-                newNCE.permitted = (android.sun.security.x509.GeneralSubtrees) permitted.clone();
+                newNCE.permitted = (GeneralSubtrees) permitted.clone();
             }
             if (excluded != null) {
                 newNCE.excluded = (GeneralSubtrees) excluded.clone();
             }
             return newNCE;
         } catch (CloneNotSupportedException cnsee) {
-            throw new RuntimeException("CloneNotSupportedException while " +
-                "cloning NameConstraintsException. This should never happen.");
+            throw new RuntimeException("CloneNotSupportedException while cloning NameConstraintsException." +
+                    " This should never happen.");
         }
     }
 }

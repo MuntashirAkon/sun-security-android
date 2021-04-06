@@ -25,19 +25,26 @@
 
 package android.sun.security.x509;
 
+import android.sun.security.util.Debug;
+import android.sun.security.util.DerEncoder;
+import android.sun.security.util.DerInputStream;
 import android.sun.security.util.DerOutputStream;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.Reader;
+import java.nio.charset.StandardCharsets;
 import java.security.AccessController;
 import java.text.Normalizer;
 import java.util.*;
 
 import android.sun.security.action.GetBooleanAction;
 import android.sun.security.pkcs.PKCS9Attribute;
+import android.sun.security.util.DerValue;
+import android.sun.security.util.ObjectIdentifier;
 
+import androidx.annotation.NonNull;
 
 /**
  * X.500 Attribute-Value-Assertion (AVA):  an attribute, as identified by
@@ -51,23 +58,19 @@ import android.sun.security.pkcs.PKCS9Attribute;
  * <p>
  * Note that instances of this class are immutable.
  *
- * @see android.sun.security.x509.X500Name
- * @see RDN
- *
- *
  * @author David Brownell
  * @author Amit Kapoor
  * @author Hemma Prafullchandra
+ * @see X500Name
+ * @see RDN
  */
-public class AVA implements android.sun.security.util.DerEncoder {
-
-    private static final android.sun.security.util.Debug debug = android.sun.security.util.Debug.getInstance("x509", "\t[AVA]");
+public class AVA implements DerEncoder {
+    private static final Debug debug = Debug.getInstance("x509", "\t[AVA]");
     // See CR 6391482: if enabled this flag preserves the old but incorrect
     // PrintableString encoding for DomainComponent. It may need to be set to
     // avoid breaking preexisting certificates generated with sun.security APIs.
-    private static final boolean PRESERVE_OLD_DC_ENCODING =
-        AccessController.doPrivileged(new GetBooleanAction
-            ("com.sun.security.preserveOldDCEncoding"));
+    private static final boolean PRESERVE_OLD_DC_ENCODING = AccessController.doPrivileged(
+            new GetBooleanAction("com.sun.security.preserveOldDCEncoding"));
 
     /**
      * DEFAULT format allows both RFC1779 and RFC2253 syntax and
@@ -84,8 +87,8 @@ public class AVA implements android.sun.security.util.DerEncoder {
     final static int RFC2253 = 3;
 
     // currently not private, accessed directly from RDN
-    final android.sun.security.util.ObjectIdentifier oid;
-    final android.sun.security.util.DerValue value;
+    final ObjectIdentifier oid;
+    final DerValue value;
 
     /*
      * If the value has any of these characters in it, it must be quoted.
@@ -112,7 +115,7 @@ public class AVA implements android.sun.security.util.DerEncoder {
      */
     private static final String hexDigits = "0123456789ABCDEF";
 
-    public AVA(android.sun.security.util.ObjectIdentifier type, android.sun.security.util.DerValue val) {
+    public AVA(ObjectIdentifier type, DerValue val) {
         if ((type == null) || (val == null)) {
             throw new NullPointerException();
         }
@@ -124,7 +127,7 @@ public class AVA implements android.sun.security.util.DerEncoder {
      * Parse an RFC 1779 or RFC 2253 style AVA string:  CN=fee fie foe fum
      * or perhaps with quotes.  Not all defined AVA tags are supported;
      * of current note are X.400 related ones (PRMD, ADMD, etc).
-     *
+     * <p>
      * This terminates at unescaped AVA separators ("+") or RDN
      * separators (",", ";"), or DN terminators (">"), and removes
      * cosmetic whitespace at the end of values.
@@ -137,7 +140,7 @@ public class AVA implements android.sun.security.util.DerEncoder {
      * Parse an RFC 1779 or RFC 2253 style AVA string:  CN=fee fie foe fum
      * or perhaps with quotes. Additional keywords can be specified in the
      * keyword/OID map.
-     *
+     * <p>
      * This terminates at unescaped AVA separators ("+") or RDN
      * separators (",", ";"), or DN terminators (">"), and removes
      * cosmetic whitespace at the end of values.
@@ -148,35 +151,35 @@ public class AVA implements android.sun.security.util.DerEncoder {
 
     /**
      * Parse an AVA string formatted according to format.
-     *
+     * <p>
      * XXX format RFC1779 should only allow RFC1779 syntax but is
      * actually DEFAULT with RFC1779 keywords.
      */
     AVA(Reader in, int format) throws IOException {
-        this(in, format, Collections.<String, String>emptyMap());
+        this(in, format, Collections.emptyMap());
     }
 
     /**
      * Parse an AVA string formatted according to format.
-     *
+     * <p>
      * XXX format RFC1779 should only allow RFC1779 syntax but is
      * actually DEFAULT with RFC1779 keywords.
      *
-     * @param in Reader containing AVA String
-     * @param format parsing format
+     * @param in         Reader containing AVA String
+     * @param format     parsing format
      * @param keywordMap a Map where a keyword String maps to a corresponding
-     *   OID String. Each AVA keyword will be mapped to the corresponding OID.
-     *   If an entry does not exist, it will fallback to the builtin
-     *   keyword/OID mapping.
+     *                   OID String. Each AVA keyword will be mapped to the corresponding OID.
+     *                   If an entry does not exist, it will fallback to the builtin
+     *                   keyword/OID mapping.
      * @throws IOException if the AVA String is not valid in the specified
-     *   standard or an OID String from the keywordMap is improperly formatted
+     *                     standard or an OID String from the keywordMap is improperly formatted
      */
     AVA(Reader in, int format, Map<String, String> keywordMap)
-        throws IOException {
+            throws IOException {
         // assume format is one of DEFAULT, RFC1779, RFC2253
 
-        StringBuilder   temp = new StringBuilder();
-        int             c;
+        StringBuilder temp = new StringBuilder();
+        int c;
 
         /*
          * First get the keyword indicating the attribute's type,
@@ -187,7 +190,7 @@ public class AVA implements android.sun.security.util.DerEncoder {
             if (c == '=') {
                 break;
             }
-            temp.append((char)c);
+            temp.append((char) c);
         }
 
         oid = AVAKeyword.getOID(temp.toString(), format, keywordMap);
@@ -203,7 +206,7 @@ public class AVA implements android.sun.security.util.DerEncoder {
             c = in.read();
             if (c == ' ') {
                 throw new IOException("Incorrect AVA RFC2253 format - " +
-                                        "leading space must be escaped");
+                        "leading space must be escaped");
             }
         } else {
             // read next character skipping whitespace
@@ -213,7 +216,7 @@ public class AVA implements android.sun.security.util.DerEncoder {
         }
         if (c == -1) {
             // empty value
-            value = new android.sun.security.util.DerValue("");
+            value = new DerValue("");
             return;
         }
 
@@ -229,22 +232,22 @@ public class AVA implements android.sun.security.util.DerEncoder {
     /**
      * Get the ObjectIdentifier of this AVA.
      */
-    public android.sun.security.util.ObjectIdentifier getObjectIdentifier() {
+    public ObjectIdentifier getObjectIdentifier() {
         return oid;
     }
 
     /**
      * Get the value of this AVA as a DerValue.
      */
-    public android.sun.security.util.DerValue getDerValue() {
+    public DerValue getDerValue() {
         return value;
     }
 
     /**
      * Get the value of this AVA as a String.
      *
-     * @exception RuntimeException if we could not obtain the string form
-     *    (should not occur)
+     * @throws RuntimeException if we could not obtain the string form
+     *                          (should not occur)
      */
     public String getValueString() {
         try {
@@ -259,9 +262,7 @@ public class AVA implements android.sun.security.util.DerEncoder {
         }
     }
 
-    private static android.sun.security.util.DerValue parseHexString
-        (Reader in, int format) throws IOException {
-
+    private static DerValue parseHexString(Reader in, int format) throws IOException {
         int c;
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         byte b = 0;
@@ -273,18 +274,18 @@ public class AVA implements android.sun.security.util.DerEncoder {
                 break;
             }
 
-            int cVal = hexDigits.indexOf(Character.toUpperCase((char)c));
+            int cVal = hexDigits.indexOf(Character.toUpperCase((char) c));
 
             if (cVal == -1) {
                 throw new IOException("AVA parse, invalid hex " +
-                                              "digit: "+ (char)c);
+                        "digit: " + (char) c);
             }
 
             if ((cNdx % 2) == 1) {
-                b = (byte)((b * 16) + (byte)(cVal));
+                b = (byte) ((b * 16) + (byte) (cVal));
                 baos.write(b);
             } else {
-                b = (byte)(cVal);
+                b = (byte) (cVal);
             }
             cNdx++;
         }
@@ -299,11 +300,10 @@ public class AVA implements android.sun.security.util.DerEncoder {
             throw new IOException("AVA parse, odd number of hex digits");
         }
 
-        return new android.sun.security.util.DerValue(baos.toByteArray());
+        return new DerValue(baos.toByteArray());
     }
 
-    private android.sun.security.util.DerValue parseQuotedString
-        (Reader in, StringBuilder temp) throws IOException {
+    private DerValue parseQuotedString(Reader in, StringBuilder temp) throws IOException {
 
         // RFC1779 specifies that an entire RDN may be enclosed in double
         // quotes. In this case the syntax is any sequence of
@@ -312,16 +312,15 @@ public class AVA implements android.sun.security.util.DerEncoder {
         // doublequote.
         int c = readChar(in, "Quoted string did not end in quote");
 
-        List<Byte> embeddedHex = new ArrayList<Byte>();
+        List<Byte> embeddedHex = new ArrayList<>();
         boolean isPrintableString = true;
         while (c != '"') {
             if (c == '\\') {
                 c = readChar(in, "Quoted string did not end in quote");
 
                 // check for embedded hex pairs
-                Byte hexByte = null;
+                Byte hexByte;
                 if ((hexByte = getEmbeddedHexPair(c, in)) != null) {
-
                     // always encode AVAs with embedded hex as UTF8
                     isPrintableString = false;
 
@@ -332,11 +331,8 @@ public class AVA implements android.sun.security.util.DerEncoder {
                     continue;
                 }
 
-                if (c != '\\' && c != '"' &&
-                    specialChars.indexOf((char)c) < 0) {
-                    throw new IOException
-                        ("Invalid escaped character in AVA: " +
-                        (char)c);
+                if (c != '\\' && c != '"' && specialChars.indexOf((char) c) < 0) {
+                    throw new IOException("Invalid escaped character in AVA: " + (char) c);
                 }
             }
 
@@ -348,8 +344,8 @@ public class AVA implements android.sun.security.util.DerEncoder {
             }
 
             // check for non-PrintableString chars
-            isPrintableString &= android.sun.security.util.DerValue.isPrintableStringChar((char)c);
-            temp.append((char)c);
+            isPrintableString &= DerValue.isPrintableStringChar((char) c);
+            temp.append((char) c);
             c = readChar(in, "Quoted string did not end in quote");
         }
 
@@ -364,32 +360,26 @@ public class AVA implements android.sun.security.util.DerEncoder {
             c = in.read();
         } while ((c == '\n') || (c == ' '));
         if (c != -1) {
-            throw new IOException("AVA had characters other than "
-                    + "whitespace after terminating quote");
+            throw new IOException("AVA had characters other than whitespace after terminating quote");
         }
 
         // encode as PrintableString unless value contains
         // non-PrintableString chars
-        if (this.oid.equals(PKCS9Attribute.EMAIL_ADDRESS_OID) ||
-            (this.oid.equals(android.sun.security.x509.X500Name.DOMAIN_COMPONENT_OID) &&
-                PRESERVE_OLD_DC_ENCODING == false)) {
+        if (this.oid.equals(PKCS9Attribute.EMAIL_ADDRESS_OID) || (this.oid.equals(X500Name.DOMAIN_COMPONENT_OID)
+                && !PRESERVE_OLD_DC_ENCODING)) {
             // EmailAddress and DomainComponent must be IA5String
-            return new android.sun.security.util.DerValue(android.sun.security.util.DerValue.tag_IA5String,
-                                        temp.toString().trim());
+            return new DerValue(DerValue.tag_IA5String, temp.toString().trim());
         } else if (isPrintableString) {
-            return new android.sun.security.util.DerValue(temp.toString().trim());
+            return new DerValue(temp.toString().trim());
         } else {
-            return new android.sun.security.util.DerValue(android.sun.security.util.DerValue.tag_UTF8String,
-                                        temp.toString().trim());
+            return new DerValue(DerValue.tag_UTF8String, temp.toString().trim());
         }
     }
 
-    private android.sun.security.util.DerValue parseString
-        (Reader in, int c, int format, StringBuilder temp) throws IOException {
-
-        List<Byte> embeddedHex = new ArrayList<Byte>();
+    private DerValue parseString(Reader in, int c, int format, StringBuilder temp) throws IOException {
+        List<Byte> embeddedHex = new ArrayList<>();
         boolean isPrintableString = true;
-        boolean escape = false;
+        boolean escape;
         boolean leadingChar = true;
         int spaceCount = 0;
         do {
@@ -399,9 +389,8 @@ public class AVA implements android.sun.security.util.DerEncoder {
                 c = readChar(in, "Invalid trailing backslash");
 
                 // check for embedded hex pairs
-                Byte hexByte = null;
+                Byte hexByte;
                 if ((hexByte = getEmbeddedHexPair(c, in)) != null) {
-
                     // always encode AVAs with embedded hex as UTF8
                     isPrintableString = false;
 
@@ -414,47 +403,32 @@ public class AVA implements android.sun.security.util.DerEncoder {
                 }
 
                 // check if character was improperly escaped
-                if ((format == DEFAULT &&
-                        specialCharsAll.indexOf((char)c) == -1) ||
-                    (format == RFC1779  &&
-                        specialChars.indexOf((char)c) == -1 &&
-                        c != '\\' && c != '\"')) {
-
-                    throw new IOException
-                        ("Invalid escaped character in AVA: '" +
-                        (char)c + "'");
-
+                if ((format == DEFAULT && specialCharsAll.indexOf((char) c) == -1) || (format == RFC1779 &&
+                        specialChars.indexOf((char) c) == -1 && c != '\\' && c != '\"')) {
+                    throw new IOException("Invalid escaped character in AVA: '" + (char) c + "'");
                 } else if (format == RFC2253) {
                     if (c == ' ') {
                         // only leading/trailing space can be escaped
                         if (!leadingChar && !trailingSpace(in)) {
-                                throw new IOException
-                                        ("Invalid escaped space character " +
-                                        "in AVA.  Only a leading or trailing " +
-                                        "space character can be escaped.");
+                            throw new IOException("Invalid escaped space character in AVA." +
+                                    " Only a leading or trailing space character can be escaped.");
                         }
                     } else if (c == '#') {
                         // only leading '#' can be escaped
                         if (!leadingChar) {
-                            throw new IOException
-                                ("Invalid escaped '#' character in AVA.  " +
-                                "Only a leading '#' can be escaped.");
+                            throw new IOException("Invalid escaped '#' character in AVA. " +
+                                    "Only a leading '#' can be escaped.");
                         }
-                    } else if (specialChars2253.indexOf((char)c) == -1) {
-                        throw new IOException
-                                ("Invalid escaped character in AVA: '" +
-                                (char)c + "'");
-
+                    } else if (specialChars2253.indexOf((char) c) == -1) {
+                        throw new IOException("Invalid escaped character in AVA: '" + (char) c + "'");
                     }
                 }
 
             } else {
                 // check if character should have been escaped
                 if (format == RFC2253) {
-                    if (specialChars2253.indexOf((char)c) != -1) {
-                        throw new IOException
-                                ("Character '" + (char)c +
-                                "' in AVA appears without escape");
+                    if (specialChars2253.indexOf((char) c) != -1) {
+                        throw new IOException("Character '" + (char) c + "' in AVA appears without escape");
                     }
                 }
             }
@@ -473,8 +447,8 @@ public class AVA implements android.sun.security.util.DerEncoder {
             }
 
             // check for non-PrintableString chars
-            isPrintableString &= android.sun.security.util.DerValue.isPrintableStringChar((char)c);
-            if (c == ' ' && escape == false) {
+            isPrintableString &= DerValue.isPrintableStringChar((char) c);
+            if (c == ' ' && !escape) {
                 // do not add non-escaped spaces yet
                 // (non-escaped trailing spaces are ignored)
                 spaceCount++;
@@ -484,15 +458,14 @@ public class AVA implements android.sun.security.util.DerEncoder {
                     temp.append(" ");
                 }
                 spaceCount = 0;
-                temp.append((char)c);
+                temp.append((char) c);
             }
             c = in.read();
             leadingChar = false;
-        } while (isTerminator(c, format) == false);
+        } while (!isTerminator(c, format));
 
         if (format == RFC2253 && spaceCount > 0) {
-            throw new IOException("Incorrect AVA RFC2253 format - " +
-                                        "trailing space must be escaped");
+            throw new IOException("Incorrect AVA RFC2253 format - trailing space must be escaped");
         }
 
         // add trailing embedded hex bytes
@@ -504,58 +477,52 @@ public class AVA implements android.sun.security.util.DerEncoder {
 
         // encode as PrintableString unless value contains
         // non-PrintableString chars
-        if (this.oid.equals(PKCS9Attribute.EMAIL_ADDRESS_OID) ||
-            (this.oid.equals(android.sun.security.x509.X500Name.DOMAIN_COMPONENT_OID) &&
-                PRESERVE_OLD_DC_ENCODING == false)) {
+        if (this.oid.equals(PKCS9Attribute.EMAIL_ADDRESS_OID) || (this.oid.equals(X500Name.DOMAIN_COMPONENT_OID)
+                && !PRESERVE_OLD_DC_ENCODING)) {
             // EmailAddress and DomainComponent must be IA5String
-            return new android.sun.security.util.DerValue(android.sun.security.util.DerValue.tag_IA5String, temp.toString());
+            return new DerValue(DerValue.tag_IA5String, temp.toString());
         } else if (isPrintableString) {
-            return new android.sun.security.util.DerValue(temp.toString());
+            return new DerValue(temp.toString());
         } else {
-            return new android.sun.security.util.DerValue(android.sun.security.util.DerValue.tag_UTF8String, temp.toString());
+            return new DerValue(DerValue.tag_UTF8String, temp.toString());
         }
     }
 
-    private static Byte getEmbeddedHexPair(int c1, Reader in)
-        throws IOException {
+    private static Byte getEmbeddedHexPair(int c1, Reader in) throws IOException {
+        if (hexDigits.indexOf(Character.toUpperCase((char) c1)) >= 0) {
+            int c2 = readChar(in, "unexpected EOF - escaped hex value must include two valid digits");
 
-        if (hexDigits.indexOf(Character.toUpperCase((char)c1)) >= 0) {
-            int c2 = readChar(in, "unexpected EOF - " +
-                        "escaped hex value must include two valid digits");
-
-            if (hexDigits.indexOf(Character.toUpperCase((char)c2)) >= 0) {
-                int hi = Character.digit((char)c1, 16);
-                int lo = Character.digit((char)c2, 16);
-                return new Byte((byte)((hi<<4) + lo));
+            if (hexDigits.indexOf(Character.toUpperCase((char) c2)) >= 0) {
+                int hi = Character.digit((char) c1, 16);
+                int lo = Character.digit((char) c2, 16);
+                return (byte) ((hi << 4) + lo);
             } else {
-                throw new IOException
-                        ("escaped hex value must include two valid digits");
+                throw new IOException("escaped hex value must include two valid digits");
             }
         }
         return null;
     }
 
-    private static String getEmbeddedHexString(List<Byte> hexList)
-                                                throws IOException {
+    private static String getEmbeddedHexString(List<Byte> hexList) {
         int n = hexList.size();
         byte[] hexBytes = new byte[n];
         for (int i = 0; i < n; i++) {
-                hexBytes[i] = hexList.get(i).byteValue();
+            hexBytes[i] = hexList.get(i);
         }
-        return new String(hexBytes, "UTF8");
+        return new String(hexBytes, StandardCharsets.UTF_8);
     }
 
     private static boolean isTerminator(int ch, int format) {
         switch (ch) {
-        case -1:
-        case '+':
-        case ',':
-            return true;
-        case ';':
-        case '>':
-            return format != RFC2253;
-        default:
-            return false;
+            case -1:
+            case '+':
+            case ',':
+                return true;
+            case ';':
+            case '>':
+                return format != RFC2253;
+            default:
+                return false;
         }
     }
 
@@ -568,9 +535,7 @@ public class AVA implements android.sun.security.util.DerEncoder {
     }
 
     private static boolean trailingSpace(Reader in) throws IOException {
-
-        boolean trailing = false;
-
+        boolean trailing;
         if (!in.markSupported()) {
             // oh well
             return true;
@@ -603,10 +568,10 @@ public class AVA implements android.sun.security.util.DerEncoder {
         }
     }
 
-    AVA(android.sun.security.util.DerValue derval) throws IOException {
+    AVA(DerValue derval) throws IOException {
         // Individual attribute value assertions are SEQUENCE of two values.
         // That'd be a "struct" outside of ASN.1.
-        if (derval.tag != android.sun.security.util.DerValue.tag_Sequence) {
+        if (derval.tag != DerValue.tag_Sequence) {
             throw new IOException("AVA not a sequence");
         }
         oid = X500Name.intern(derval.data.getOID());
@@ -614,11 +579,11 @@ public class AVA implements android.sun.security.util.DerEncoder {
 
         if (derval.data.available() != 0) {
             throw new IOException("AVA, extra bytes = "
-                + derval.data.available());
+                    + derval.data.available());
         }
     }
 
-    AVA(android.sun.security.util.DerInputStream in) throws IOException {
+    AVA(DerInputStream in) throws IOException {
         this(in.getDerValue());
     }
 
@@ -626,12 +591,11 @@ public class AVA implements android.sun.security.util.DerEncoder {
         if (this == obj) {
             return true;
         }
-        if (obj instanceof AVA == false) {
+        if (!(obj instanceof AVA)) {
             return false;
         }
-        AVA other = (AVA)obj;
-        return this.toRFC2253CanonicalString().equals
-                                (other.toRFC2253CanonicalString());
+        AVA other = (AVA) obj;
+        return this.toRFC2253CanonicalString().equals(other.toRFC2253CanonicalString());
     }
 
     /**
@@ -654,18 +618,16 @@ public class AVA implements android.sun.security.util.DerEncoder {
      * DER encode this object onto an output stream.
      * Implements the <code>DerEncoder</code> interface.
      *
-     * @param out
-     * the output stream on which to write the DER encoding.
-     *
-     * @exception IOException on encoding error.
+     * @param out the output stream on which to write the DER encoding.
+     * @throws IOException on encoding error.
      */
     public void derEncode(OutputStream out) throws IOException {
-        android.sun.security.util.DerOutputStream tmp = new android.sun.security.util.DerOutputStream();
-        android.sun.security.util.DerOutputStream tmp2 = new android.sun.security.util.DerOutputStream();
+        DerOutputStream tmp = new DerOutputStream();
+        DerOutputStream tmp2 = new DerOutputStream();
 
         tmp.putOID(oid);
         value.encode(tmp);
-        tmp2.write(android.sun.security.util.DerValue.tag_Sequence, tmp);
+        tmp2.write(DerValue.tag_Sequence, tmp);
         out.write(tmp2.toByteArray());
     }
 
@@ -677,9 +639,9 @@ public class AVA implements android.sun.security.util.DerEncoder {
      * Returns a printable form of this attribute, using RFC 1779
      * syntax for individual attribute/value assertions.
      */
+    @NonNull
     public String toString() {
-        return toKeywordValueString
-            (toKeyword(DEFAULT, Collections.<String, String>emptyMap()));
+        return toKeywordValueString(toKeyword(DEFAULT, Collections.emptyMap()));
     }
 
     /**
@@ -688,7 +650,7 @@ public class AVA implements android.sun.security.util.DerEncoder {
      * emits standardised keywords.
      */
     public String toRFC1779String() {
-        return toRFC1779String(Collections.<String, String>emptyMap());
+        return toRFC1779String(Collections.emptyMap());
     }
 
     /**
@@ -707,7 +669,7 @@ public class AVA implements android.sun.security.util.DerEncoder {
      * emits standardised keywords.
      */
     public String toRFC2253String() {
-        return toRFC2253String(Collections.<String, String>emptyMap());
+        return toRFC2253String(Collections.emptyMap());
     }
 
     /**
@@ -737,18 +699,15 @@ public class AVA implements android.sun.security.util.DerEncoder {
          * AttributeValue.  This form SHOULD be used if the AttributeType is of
          * the dotted-decimal form.
          */
-        if ((typeAndValue.charAt(0) >= '0' && typeAndValue.charAt(0) <= '9') ||
-            !isDerString(value, false))
-        {
-            byte[] data = null;
+        if ((typeAndValue.charAt(0) >= '0' && typeAndValue.charAt(0) <= '9') || !isDerString(value, false)) {
+            byte[] data;
             try {
                 data = value.toByteArray();
             } catch (IOException ie) {
                 throw new IllegalArgumentException("DER Value conversion");
             }
             typeAndValue.append('#');
-            for (int j = 0; j < data.length; j++) {
-                byte b = data[j];
+            for (byte b : data) {
                 typeAndValue.append(Character.forDigit(0xF & (b >>> 4), 16));
                 typeAndValue.append(Character.forDigit(0xF & b, 16));
             }
@@ -761,9 +720,9 @@ public class AVA implements android.sun.security.util.DerEncoder {
              * NOTE: this implementation only emits DirectoryStrings of the
              * types returned by isDerString().
              */
-            String valStr = null;
+            String valStr;
             try {
-                valStr = new String(value.getDataBytes(), "UTF8");
+                valStr = new String(value.getDataBytes(), StandardCharsets.UTF_8);
             } catch (IOException ie) {
                 throw new IllegalArgumentException("DER Value conversion");
             }
@@ -796,9 +755,7 @@ public class AVA implements android.sun.security.util.DerEncoder {
 
             for (int i = 0; i < valStr.length(); i++) {
                 char c = valStr.charAt(i);
-                if (android.sun.security.util.DerValue.isPrintableStringChar(c) ||
-                    escapees.indexOf(c) >= 0) {
-
+                if (DerValue.isPrintableStringChar(c) || escapees.indexOf(c) >= 0) {
                     // escape escapees
                     if (escapees.indexOf(c) >= 0) {
                         sbuffer.append('\\');
@@ -810,25 +767,16 @@ public class AVA implements android.sun.security.util.DerEncoder {
                 } else if (c == '\u0000') {
                     // escape null character
                     sbuffer.append("\\00");
-
-                } else if (debug != null && android.sun.security.util.Debug.isOn("ava")) {
-
+                } else if (debug != null && Debug.isOn("ava")) {
                     // embed non-printable/non-escaped char
                     // as escaped hex pairs for debugging
-                    byte[] valueBytes = null;
-                    try {
-                        valueBytes = Character.toString(c).getBytes("UTF8");
-                    } catch (IOException ie) {
-                        throw new IllegalArgumentException
-                                        ("DER Value conversion");
-                    }
-                    for (int j = 0; j < valueBytes.length; j++) {
+                    byte[] valueBytes;
+                    valueBytes = Character.toString(c).getBytes(StandardCharsets.UTF_8);
+                    for (byte valueByte : valueBytes) {
                         sbuffer.append('\\');
-                        char hexChar = Character.forDigit
-                                (0xF & (valueBytes[j] >>> 4), 16);
+                        char hexChar = Character.forDigit(0xF & (valueByte >>> 4), 16);
                         sbuffer.append(Character.toUpperCase(hexChar));
-                        hexChar = Character.forDigit
-                                (0xF & (valueBytes[j]), 16);
+                        hexChar = Character.forDigit(0xF & valueByte, 16);
                         sbuffer.append(Character.toUpperCase(hexChar));
                     }
                 } else {
@@ -877,8 +825,7 @@ public class AVA implements android.sun.security.util.DerEncoder {
          * section 2.4.
          */
         StringBuilder typeAndValue = new StringBuilder(40);
-        typeAndValue.append
-            (toKeyword(RFC2253, Collections.<String, String>emptyMap()));
+        typeAndValue.append(toKeyword(RFC2253, Collections.emptyMap()));
         typeAndValue.append('=');
 
         /*
@@ -891,17 +838,15 @@ public class AVA implements android.sun.security.util.DerEncoder {
          * the dotted-decimal form.
          */
         if ((typeAndValue.charAt(0) >= '0' && typeAndValue.charAt(0) <= '9') ||
-            !isDerString(value, true))
-        {
-            byte[] data = null;
+                !isDerString(value, true)) {
+            byte[] data;
             try {
                 data = value.toByteArray();
             } catch (IOException ie) {
                 throw new IllegalArgumentException("DER Value conversion");
             }
             typeAndValue.append('#');
-            for (int j = 0; j < data.length; j++) {
-                byte b = data[j];
+            for (byte b : data) {
                 typeAndValue.append(Character.forDigit(0xF & (b >>> 4), 16));
                 typeAndValue.append(Character.forDigit(0xF & b, 16));
             }
@@ -914,9 +859,9 @@ public class AVA implements android.sun.security.util.DerEncoder {
              * NOTE: this implementation only emits DirectoryStrings of the
              * types returned by isDerString().
              */
-            String valStr = null;
+            String valStr;
             try {
-                valStr = new String(value.getDataBytes(), "UTF8");
+                valStr = new String(value.getDataBytes(), StandardCharsets.UTF_8);
             } catch (IOException ie) {
                 throw new IllegalArgumentException("DER Value conversion");
             }
@@ -946,10 +891,7 @@ public class AVA implements android.sun.security.util.DerEncoder {
             for (int i = 0; i < valStr.length(); i++) {
                 char c = valStr.charAt(i);
 
-                if (android.sun.security.util.DerValue.isPrintableStringChar(c) ||
-                    escapees.indexOf(c) >= 0 ||
-                    (i == 0 && c == '#')) {
-
+                if (DerValue.isPrintableStringChar(c) || escapees.indexOf(c) >= 0 || (i == 0 && c == '#')) {
                     // escape leading '#' and escapees
                     if ((i == 0 && c == '#') || escapees.indexOf(c) >= 0) {
                         sbuffer.append('\\');
@@ -960,7 +902,7 @@ public class AVA implements android.sun.security.util.DerEncoder {
                         previousWhite = false;
                         sbuffer.append(c);
                     } else {
-                        if (previousWhite == false) {
+                        if (!previousWhite) {
                             // add single whitespace
                             previousWhite = true;
                             sbuffer.append(c);
@@ -969,27 +911,18 @@ public class AVA implements android.sun.security.util.DerEncoder {
                             continue;
                         }
                     }
-
-                } else if (debug != null && android.sun.security.util.Debug.isOn("ava")) {
-
+                } else if (debug != null && Debug.isOn("ava")) {
                     // embed non-printable/non-escaped char
                     // as escaped hex pairs for debugging
 
                     previousWhite = false;
 
-                    byte valueBytes[] = null;
-                    try {
-                        valueBytes = Character.toString(c).getBytes("UTF8");
-                    } catch (IOException ie) {
-                        throw new IllegalArgumentException
-                                        ("DER Value conversion");
-                    }
-                    for (int j = 0; j < valueBytes.length; j++) {
+                    byte[] valueBytes;
+                    valueBytes = Character.toString(c).getBytes(StandardCharsets.UTF_8);
+                    for (byte valueByte : valueBytes) {
                         sbuffer.append('\\');
-                        sbuffer.append(Character.forDigit
-                                        (0xF & (valueBytes[j] >>> 4), 16));
-                        sbuffer.append(Character.forDigit
-                                        (0xF & (valueBytes[j]), 16));
+                        sbuffer.append(Character.forDigit(0xF & (valueByte >>> 4), 16));
+                        sbuffer.append(Character.forDigit(0xF & valueByte, 16));
                     }
                 } else {
 
@@ -1012,23 +945,23 @@ public class AVA implements android.sun.security.util.DerEncoder {
     /*
      * Return true if DerValue can be represented as a String.
      */
-    private static boolean isDerString(android.sun.security.util.DerValue value, boolean canonical) {
+    private static boolean isDerString(DerValue value, boolean canonical) {
         if (canonical) {
             switch (value.tag) {
-                case android.sun.security.util.DerValue.tag_PrintableString:
-                case android.sun.security.util.DerValue.tag_UTF8String:
+                case DerValue.tag_PrintableString:
+                case DerValue.tag_UTF8String:
                     return true;
                 default:
                     return false;
             }
         } else {
             switch (value.tag) {
-                case android.sun.security.util.DerValue.tag_PrintableString:
-                case android.sun.security.util.DerValue.tag_T61String:
-                case android.sun.security.util.DerValue.tag_IA5String:
-                case android.sun.security.util.DerValue.tag_GeneralString:
-                case android.sun.security.util.DerValue.tag_BMPString:
-                case android.sun.security.util.DerValue.tag_UTF8String:
+                case DerValue.tag_PrintableString:
+                case DerValue.tag_T61String:
+                case DerValue.tag_IA5String:
+                case DerValue.tag_GeneralString:
+                case DerValue.tag_BMPString:
+                case DerValue.tag_UTF8String:
                     return true;
                 default:
                     return false;
@@ -1046,31 +979,27 @@ public class AVA implements android.sun.security.util.DerEncoder {
          * production as practical.  First the keyword (mandatory),
          * then the equals sign, finally the value.
          */
-        StringBuilder   retval = new StringBuilder(40);
+        StringBuilder retval = new StringBuilder(40);
 
         retval.append(keyword);
         retval.append("=");
 
         try {
             String valStr = value.getAsString();
-
             if (valStr == null) {
-
                 // rfc1779 specifies that attribute values associated
                 // with non-standard keyword attributes may be represented
                 // using the hex format below.  This will be used only
                 // when the value is not a string type
 
-                byte    data [] = value.toByteArray();
+                byte[] data = value.toByteArray();
 
                 retval.append('#');
-                for (int i = 0; i < data.length; i++) {
-                    retval.append(hexDigits.charAt((data [i] >> 4) & 0x0f));
-                    retval.append(hexDigits.charAt(data [i] & 0x0f));
+                for (byte datum : data) {
+                    retval.append(hexDigits.charAt((datum >> 4) & 0x0f));
+                    retval.append(hexDigits.charAt(datum & 0x0f));
                 }
-
             } else {
-
                 boolean quoteNeeded = false;
                 StringBuilder sbuffer = new StringBuilder();
                 boolean previousWhite = false;
@@ -1083,13 +1012,10 @@ public class AVA implements android.sun.security.util.DerEncoder {
                  */
                 for (int i = 0; i < valStr.length(); i++) {
                     char c = valStr.charAt(i);
-                    if (android.sun.security.util.DerValue.isPrintableStringChar(c) ||
-                        escapees.indexOf(c) >= 0) {
+                    if (DerValue.isPrintableStringChar(c) || escapees.indexOf(c) >= 0) {
 
                         // quote if leading whitespace or special chars
-                        if (!quoteNeeded &&
-                            ((i == 0 && (c == ' ' || c == '\n')) ||
-                                escapees.indexOf(c) >= 0)) {
+                        if (!quoteNeeded && ((i == 0 && (c == ' ' || c == '\n')) || escapees.indexOf(c) >= 0)) {
                             quoteNeeded = true;
                         }
 
@@ -1106,32 +1032,24 @@ public class AVA implements android.sun.security.util.DerEncoder {
                             }
                             previousWhite = true;
                         }
-
                         sbuffer.append(c);
-
-                    } else if (debug != null && android.sun.security.util.Debug.isOn("ava")) {
-
+                    } else if (debug != null && Debug.isOn("ava")) {
                         // embed non-printable/non-escaped char
                         // as escaped hex pairs for debugging
-
                         previousWhite = false;
 
                         // embed escaped hex pairs
                         byte[] valueBytes =
-                                Character.toString(c).getBytes("UTF8");
-                        for (int j = 0; j < valueBytes.length; j++) {
+                                Character.toString(c).getBytes(StandardCharsets.UTF_8);
+                        for (byte valueByte : valueBytes) {
                             sbuffer.append('\\');
-                            char hexChar = Character.forDigit
-                                        (0xF & (valueBytes[j] >>> 4), 16);
+                            char hexChar = Character.forDigit(0xF & (valueByte >>> 4), 16);
                             sbuffer.append(Character.toUpperCase(hexChar));
-                            hexChar = Character.forDigit
-                                        (0xF & (valueBytes[j]), 16);
+                            hexChar = Character.forDigit(0xF & valueByte, 16);
                             sbuffer.append(Character.toUpperCase(hexChar));
                         }
                     } else {
-
                         // append non-printable/non-escaped char
-
                         previousWhite = false;
                         sbuffer.append(c);
                     }
@@ -1147,7 +1065,7 @@ public class AVA implements android.sun.security.util.DerEncoder {
 
                 // Emit the string ... quote it if needed
                 if (quoteNeeded) {
-                    retval.append("\"" + sbuffer.toString() + "\"");
+                    retval.append("\"").append(sbuffer.toString()).append("\"");
                 } else {
                     retval.append(sbuffer.toString());
                 }
@@ -1168,15 +1086,15 @@ public class AVA implements android.sun.security.util.DerEncoder {
  */
 class AVAKeyword {
 
-    private static final Map<android.sun.security.util.ObjectIdentifier,AVAKeyword> oidMap;
-    private static final Map<String,AVAKeyword> keywordMap;
+    private static final Map<ObjectIdentifier, AVAKeyword> oidMap;
+    private static final Map<String, AVAKeyword> keywordMap;
 
-    private String keyword;
-    private android.sun.security.util.ObjectIdentifier oid;
-    private boolean rfc1779Compliant, rfc2253Compliant;
+    private final String keyword;
+    private final ObjectIdentifier oid;
+    private final boolean rfc1779Compliant;
+    private final boolean rfc2253Compliant;
 
-    private AVAKeyword(String keyword, android.sun.security.util.ObjectIdentifier oid,
-               boolean rfc1779Compliant, boolean rfc2253Compliant) {
+    private AVAKeyword(String keyword, ObjectIdentifier oid, boolean rfc1779Compliant, boolean rfc2253Compliant) {
         this.keyword = keyword;
         this.oid = oid;
         this.rfc1779Compliant = rfc1779Compliant;
@@ -1189,15 +1107,15 @@ class AVAKeyword {
 
     private boolean isCompliant(int standard) {
         switch (standard) {
-        case AVA.RFC1779:
-            return rfc1779Compliant;
-        case AVA.RFC2253:
-            return rfc2253Compliant;
-        case AVA.DEFAULT:
-            return true;
-        default:
-            // should not occur, internal error
-            throw new IllegalArgumentException("Invalid standard " + standard);
+            case AVA.RFC1779:
+                return rfc1779Compliant;
+            case AVA.RFC2253:
+                return rfc2253Compliant;
+            case AVA.DEFAULT:
+                return true;
+            default:
+                // should not occur, internal error
+                throw new IllegalArgumentException("Invalid standard " + standard);
         }
     }
 
@@ -1207,10 +1125,8 @@ class AVAKeyword {
      *
      * @throws IOException If the keyword is not valid in the specified standard
      */
-    static android.sun.security.util.ObjectIdentifier getOID(String keyword, int standard)
-            throws IOException {
-        return getOID
-            (keyword, standard, Collections.<String, String>emptyMap());
+    static ObjectIdentifier getOID(String keyword, int standard) throws IOException {
+        return getOID(keyword, standard, Collections.emptyMap());
     }
 
     /**
@@ -1218,14 +1134,13 @@ class AVAKeyword {
      * string encoded object identifier) in the given standard.
      *
      * @param keyword a Map where a keyword String maps to a corresponding
-     *   OID String. Each AVA keyword will be mapped to the corresponding OID.
-     *   If an entry does not exist, it will fallback to the builtin
-     *   keyword/OID mapping.
+     *                OID String. Each AVA keyword will be mapped to the corresponding OID.
+     *                If an entry does not exist, it will fallback to the builtin
+     *                keyword/OID mapping.
      * @throws IOException If the keyword is not valid in the specified standard
-     *   or the OID String to which a keyword maps to is improperly formatted.
+     *                     or the OID String to which a keyword maps to is improperly formatted.
      */
-    static android.sun.security.util.ObjectIdentifier getOID
-        (String keyword, int standard, Map<String, String> extraKeywordMap)
+    static ObjectIdentifier getOID(String keyword, int standard, Map<String, String> extraKeywordMap)
             throws IOException {
 
         keyword = keyword.toUpperCase(Locale.ENGLISH);
@@ -1247,14 +1162,14 @@ class AVAKeyword {
                 return ak.oid;
             }
         } else {
-            return new android.sun.security.util.ObjectIdentifier(oidString);
+            return new ObjectIdentifier(oidString);
         }
 
         // no keyword found or not standard compliant, check if OID string
 
         // RFC1779 requires, DEFAULT allows OID. prefix
         if (standard == AVA.RFC1779) {
-            if (keyword.startsWith("OID.") == false) {
+            if (!keyword.startsWith("OID.")) {
                 throw new IOException("Invalid RFC1779 keyword: " + keyword);
             }
             keyword = keyword.substring(4);
@@ -1270,10 +1185,10 @@ class AVAKeyword {
                 number = true;
             }
         }
-        if (number == false) {
+        if (!number) {
             throw new IOException("Invalid keyword \"" + keyword + "\"");
         }
-        return new android.sun.security.util.ObjectIdentifier(keyword);
+        return new ObjectIdentifier(keyword);
     }
 
     /**
@@ -1281,9 +1196,8 @@ class AVAKeyword {
      * If no keyword is available, the ObjectIdentifier is encoded as a
      * String.
      */
-    static String getKeyword(android.sun.security.util.ObjectIdentifier oid, int standard) {
-        return getKeyword
-            (oid, standard, Collections.<String, String>emptyMap());
+    static String getKeyword(ObjectIdentifier oid, int standard) {
+        return getKeyword(oid, standard, Collections.emptyMap());
     }
 
     /**
@@ -1292,9 +1206,7 @@ class AVAKeyword {
      * builtin/default set. If no keyword is available, the ObjectIdentifier
      * is encoded as a String.
      */
-    static String getKeyword
-        (android.sun.security.util.ObjectIdentifier oid, int standard, Map<String, String> extraOidMap) {
-
+    static String getKeyword(ObjectIdentifier oid, int standard, Map<String, String> extraOidMap) {
         // check extraOidMap first, then fallback to built-in map
         String oidString = oid.toString();
         String keywordString = extraOidMap.get(oidString);
@@ -1311,14 +1223,14 @@ class AVAKeyword {
             char c = keywordString.charAt(0);
             if (c < 65 || c > 122 || (c > 90 && c < 97)) {
                 throw new IllegalArgumentException
-                    ("keyword does not start with letter");
+                        ("keyword does not start with letter");
             }
-            for (int i=1; i<keywordString.length(); i++) {
+            for (int i = 1; i < keywordString.length(); i++) {
                 c = keywordString.charAt(i);
                 if ((c < 65 || c > 122 || (c > 90 && c < 97)) &&
-                    (c < 48 || c > 57) && c != '_') {
+                        (c < 48 || c > 57) && c != '_') {
                     throw new IllegalArgumentException
-                    ("keyword character is not a letter, digit, or underscore");
+                            ("keyword character is not a letter, digit, or underscore");
                 }
             }
             return keywordString;
@@ -1334,7 +1246,7 @@ class AVAKeyword {
     /**
      * Test if oid has an associated keyword in standard.
      */
-    static boolean hasKeyword(android.sun.security.util.ObjectIdentifier oid, int standard) {
+    static boolean hasKeyword(ObjectIdentifier oid, int standard) {
         AVAKeyword ak = oidMap.get(oid);
         if (ak == null) {
             return false;
@@ -1343,34 +1255,31 @@ class AVAKeyword {
     }
 
     static {
-        oidMap = new HashMap<android.sun.security.util.ObjectIdentifier,AVAKeyword>();
-        keywordMap = new HashMap<String,AVAKeyword>();
+        oidMap = new HashMap<>();
+        keywordMap = new HashMap<>();
 
         // NOTE if multiple keywords are available for one OID, order
         // is significant!! Preferred *LAST*.
-        new AVAKeyword("CN",           android.sun.security.x509.X500Name.commonName_oid,   true,  true);
-        new AVAKeyword("C",            android.sun.security.x509.X500Name.countryName_oid,  true,  true);
-        new AVAKeyword("L",            android.sun.security.x509.X500Name.localityName_oid, true,  true);
-        new AVAKeyword("S",            android.sun.security.x509.X500Name.stateName_oid,    false, false);
-        new AVAKeyword("ST",           android.sun.security.x509.X500Name.stateName_oid,    true,  true);
-        new AVAKeyword("O",            android.sun.security.x509.X500Name.orgName_oid,      true,  true);
-        new AVAKeyword("OU",           android.sun.security.x509.X500Name.orgUnitName_oid,  true,  true);
-        new AVAKeyword("T",            android.sun.security.x509.X500Name.title_oid,        false, false);
-        new AVAKeyword("IP",           android.sun.security.x509.X500Name.ipAddress_oid,    false, false);
-        new AVAKeyword("STREET",       android.sun.security.x509.X500Name.streetAddress_oid,true,  true);
-        new AVAKeyword("DC",           android.sun.security.x509.X500Name.DOMAIN_COMPONENT_OID,
-                                                                  false, true);
-        new AVAKeyword("DNQUALIFIER",  android.sun.security.x509.X500Name.DNQUALIFIER_OID,  false, false);
-        new AVAKeyword("DNQ",          android.sun.security.x509.X500Name.DNQUALIFIER_OID,  false, false);
-        new AVAKeyword("SURNAME",      android.sun.security.x509.X500Name.SURNAME_OID,      false, false);
-        new AVAKeyword("GIVENNAME",    android.sun.security.x509.X500Name.GIVENNAME_OID,    false, false);
-        new AVAKeyword("INITIALS",     android.sun.security.x509.X500Name.INITIALS_OID,     false, false);
-        new AVAKeyword("GENERATION",   android.sun.security.x509.X500Name.GENERATIONQUALIFIER_OID,
-                                                                  false, false);
+        new AVAKeyword("CN", X500Name.commonName_oid, true, true);
+        new AVAKeyword("C", X500Name.countryName_oid, true, true);
+        new AVAKeyword("L", X500Name.localityName_oid, true, true);
+        new AVAKeyword("S", X500Name.stateName_oid, false, false);
+        new AVAKeyword("ST", X500Name.stateName_oid, true, true);
+        new AVAKeyword("O", X500Name.orgName_oid, true, true);
+        new AVAKeyword("OU", X500Name.orgUnitName_oid, true, true);
+        new AVAKeyword("T", X500Name.title_oid, false, false);
+        new AVAKeyword("IP", X500Name.ipAddress_oid, false, false);
+        new AVAKeyword("STREET", X500Name.streetAddress_oid, true, true);
+        new AVAKeyword("DC", X500Name.DOMAIN_COMPONENT_OID, false, true);
+        new AVAKeyword("DNQUALIFIER", X500Name.DNQUALIFIER_OID, false, false);
+        new AVAKeyword("DNQ", X500Name.DNQUALIFIER_OID, false, false);
+        new AVAKeyword("SURNAME", X500Name.SURNAME_OID, false, false);
+        new AVAKeyword("GIVENNAME", X500Name.GIVENNAME_OID, false, false);
+        new AVAKeyword("INITIALS", X500Name.INITIALS_OID, false, false);
+        new AVAKeyword("GENERATION", X500Name.GENERATIONQUALIFIER_OID, false, false);
         new AVAKeyword("EMAIL", PKCS9Attribute.EMAIL_ADDRESS_OID, false, false);
-        new AVAKeyword("EMAILADDRESS", PKCS9Attribute.EMAIL_ADDRESS_OID,
-                                                                  false, false);
-        new AVAKeyword("UID",          android.sun.security.x509.X500Name.userid_oid,       false, true);
-        new AVAKeyword("SERIALNUMBER", android.sun.security.x509.X500Name.SERIALNUMBER_OID, false, false);
+        new AVAKeyword("EMAILADDRESS", PKCS9Attribute.EMAIL_ADDRESS_OID, false, false);
+        new AVAKeyword("UID", X500Name.userid_oid, false, true);
+        new AVAKeyword("SERIALNUMBER", X500Name.SERIALNUMBER_OID, false, false);
     }
 }
