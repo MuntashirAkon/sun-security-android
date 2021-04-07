@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2021 Muntashir Al-Islam
  * Copyright (c) 1997, 2010, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
@@ -28,11 +29,13 @@ package android.sun.security.provider;
 import android.sun.security.pkcs.EncryptedPrivateKeyInfo;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.security.*;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateFactory;
 import java.security.cert.CertificateException;
 import java.util.*;
+
 import android.sun.misc.IOUtils;
 
 /**
@@ -40,12 +43,9 @@ import android.sun.misc.IOUtils;
  *
  * @author Jan Luehe
  * @author David Brownell
- *
- *
- * @see android.sun.security.provider.KeyProtector
+ * @see KeyProtector
  * @see java.security.KeyStoreSpi
  * @see KeyTool
- *
  * @since 1.2
  */
 
@@ -72,14 +72,14 @@ abstract class JavaKeyStore extends KeyStoreSpi {
     private static class KeyEntry {
         Date date; // the creation date of this entry
         byte[] protectedPrivKey;
-        Certificate chain[];
-    };
+        Certificate[] chain;
+    }
 
     // Trusted certificates
     private static class TrustedCertEntry {
         Date date; // the creation date of this entry
         Certificate cert;
-    };
+    }
 
     /**
      * Private keys and certificates are stored in a hashtable.
@@ -88,7 +88,7 @@ abstract class JavaKeyStore extends KeyStoreSpi {
     private final Hashtable<String, Object> entries;
 
     JavaKeyStore() {
-        entries = new Hashtable<String, Object>();
+        entries = new Hashtable<>();
     }
 
     // convert an alias to internal form, overridden in subclasses:
@@ -100,39 +100,33 @@ abstract class JavaKeyStore extends KeyStoreSpi {
      * Returns the key associated with the given alias, using the given
      * password to recover it.
      *
-     * @param alias the alias name
+     * @param alias    the alias name
      * @param password the password for recovering the key
-     *
      * @return the requested key, or null if the given alias does not exist
      * or does not identify a <i>key entry</i>.
-     *
-     * @exception NoSuchAlgorithmException if the algorithm for recovering the
-     * key cannot be found
-     * @exception UnrecoverableKeyException if the key cannot be recovered
-     * (e.g., the given password is wrong).
+     * @throws NoSuchAlgorithmException  if the algorithm for recovering the
+     *                                   key cannot be found
+     * @throws UnrecoverableKeyException if the key cannot be recovered
+     *                                   (e.g., the given password is wrong).
      */
     public Key engineGetKey(String alias, char[] password)
-        throws NoSuchAlgorithmException, UnrecoverableKeyException
-    {
+            throws NoSuchAlgorithmException, UnrecoverableKeyException {
         Object entry = entries.get(convertAlias(alias));
 
-        if (entry == null || !(entry instanceof KeyEntry)) {
+        if (!(entry instanceof KeyEntry)) {
             return null;
         }
         if (password == null) {
             throw new UnrecoverableKeyException("Password must not be null");
         }
 
-        android.sun.security.provider.KeyProtector keyProtector = new android.sun.security.provider.KeyProtector(password);
-        byte[] encrBytes = ((KeyEntry)entry).protectedPrivKey;
+        KeyProtector keyProtector = new KeyProtector(password);
+        byte[] encrBytes = ((KeyEntry) entry).protectedPrivKey;
         EncryptedPrivateKeyInfo encrInfo;
-        byte[] plain;
         try {
             encrInfo = new EncryptedPrivateKeyInfo(encrBytes);
         } catch (IOException ioe) {
-            throw new UnrecoverableKeyException("Private key not stored as "
-                                                + "PKCS #8 "
-                                                + "EncryptedPrivateKeyInfo");
+            throw new UnrecoverableKeyException("Private key not stored as PKCS #8 EncryptedPrivateKeyInfo");
         }
         return keyProtector.recover(encrInfo);
     }
@@ -141,7 +135,6 @@ abstract class JavaKeyStore extends KeyStoreSpi {
      * Returns the certificate chain associated with the given alias.
      *
      * @param alias the alias name
-     *
      * @return the certificate chain (ordered with the user's certificate first
      * and the root certificate authority last), or null if the given alias
      * does not exist or does not contain a certificate chain (i.e., the given
@@ -151,11 +144,11 @@ abstract class JavaKeyStore extends KeyStoreSpi {
     public Certificate[] engineGetCertificateChain(String alias) {
         Object entry = entries.get(convertAlias(alias));
 
-        if (entry != null && entry instanceof KeyEntry) {
-            if (((KeyEntry)entry).chain == null) {
+        if (entry instanceof KeyEntry) {
+            if (((KeyEntry) entry).chain == null) {
                 return null;
             } else {
-                return ((KeyEntry)entry).chain.clone();
+                return ((KeyEntry) entry).chain.clone();
             }
         } else {
             return null;
@@ -173,7 +166,6 @@ abstract class JavaKeyStore extends KeyStoreSpi {
      * chain.
      *
      * @param alias the alias name
-     *
      * @return the certificate, or null if the given alias does not exist or
      * does not contain a certificate.
      */
@@ -182,12 +174,12 @@ abstract class JavaKeyStore extends KeyStoreSpi {
 
         if (entry != null) {
             if (entry instanceof TrustedCertEntry) {
-                return ((TrustedCertEntry)entry).cert;
+                return ((TrustedCertEntry) entry).cert;
             } else {
-                if (((KeyEntry)entry).chain == null) {
+                if (((KeyEntry) entry).chain == null) {
                     return null;
                 } else {
-                    return ((KeyEntry)entry).chain[0];
+                    return ((KeyEntry) entry).chain[0];
                 }
             }
         } else {
@@ -199,7 +191,6 @@ abstract class JavaKeyStore extends KeyStoreSpi {
      * Returns the creation date of the entry identified by the given alias.
      *
      * @param alias the alias name
-     *
      * @return the creation date of this entry, or null if the given alias does
      * not exist
      */
@@ -208,9 +199,9 @@ abstract class JavaKeyStore extends KeyStoreSpi {
 
         if (entry != null) {
             if (entry instanceof TrustedCertEntry) {
-                return new Date(((TrustedCertEntry)entry).date.getTime());
+                return new Date(((TrustedCertEntry) entry).date.getTime());
             } else {
-                return new Date(((KeyEntry)entry).date.getTime());
+                return new Date(((KeyEntry) entry).date.getTime());
             }
         } else {
             return null;
@@ -229,37 +220,31 @@ abstract class JavaKeyStore extends KeyStoreSpi {
      * associated with it is overridden by the given key and certificate
      * chain.
      *
-     * @param alias the alias name
-     * @param key the private key to be associated with the alias
+     * @param alias    the alias name
+     * @param key      the private key to be associated with the alias
      * @param password the password to protect the key
-     * @param chain the certificate chain for the corresponding public
-     * key (only required if the given key is of type
-     * <code>java.security.PrivateKey</code>).
-     *
-     * @exception KeyStoreException if the given key is not a private key,
-     * cannot be protected, or this operation fails for some other reason
+     * @param chain    the certificate chain for the corresponding public
+     *                 key (only required if the given key is of type
+     *                 <code>java.security.PrivateKey</code>).
+     * @throws KeyStoreException if the given key is not a private key,
+     *                           cannot be protected, or this operation fails for some other reason
      */
-    public void engineSetKeyEntry(String alias, Key key, char[] password,
-                                  Certificate[] chain)
-        throws KeyStoreException
-    {
-        android.sun.security.provider.KeyProtector keyProtector = null;
-
-        if (!(key instanceof java.security.PrivateKey)) {
+    public void engineSetKeyEntry(String alias, Key key, char[] password, Certificate[] chain)
+            throws KeyStoreException {
+        if (!(key instanceof PrivateKey)) {
             throw new KeyStoreException("Cannot store non-PrivateKeys");
         }
         try {
-            synchronized(entries) {
+            synchronized (entries) {
                 KeyEntry entry = new KeyEntry();
                 entry.date = new Date();
 
                 // Protect the encoding of the key
-                keyProtector = new android.sun.security.provider.KeyProtector(password);
+                KeyProtector keyProtector = new KeyProtector(password);
                 entry.protectedPrivKey = keyProtector.protect(key);
 
                 // clone the chain
-                if ((chain != null) &&
-                    (chain.length != 0)) {
+                if (chain != null && chain.length != 0) {
                     entry.chain = chain.clone();
                 } else {
                     entry.chain = null;
@@ -269,8 +254,6 @@ abstract class JavaKeyStore extends KeyStoreSpi {
             }
         } catch (NoSuchAlgorithmException nsae) {
             throw new KeyStoreException("Key protection algorithm not found");
-        } finally {
-            keyProtector = null;
         }
     }
 
@@ -290,33 +273,28 @@ abstract class JavaKeyStore extends KeyStoreSpi {
      * certificate chain).
      *
      * @param alias the alias name
-     * @param key the key (in protected format) to be associated with the alias
+     * @param key   the key (in protected format) to be associated with the alias
      * @param chain the certificate chain for the corresponding public
-     * key (only useful if the protected key is of type
-     * <code>java.security.PrivateKey</code>).
-     *
-     * @exception KeyStoreException if this operation fails.
+     *              key (only useful if the protected key is of type
+     *              <code>java.security.PrivateKey</code>).
+     * @throws KeyStoreException if this operation fails.
      */
-    public void engineSetKeyEntry(String alias, byte[] key,
-                                  Certificate[] chain)
-        throws KeyStoreException
-    {
-        synchronized(entries) {
+    public void engineSetKeyEntry(String alias, byte[] key, Certificate[] chain)
+            throws KeyStoreException {
+        synchronized (entries) {
             // key must be encoded as EncryptedPrivateKeyInfo as defined in
             // PKCS#8
             try {
                 new EncryptedPrivateKeyInfo(key);
             } catch (IOException ioe) {
-                throw new KeyStoreException("key is not encoded as "
-                                            + "EncryptedPrivateKeyInfo");
+                throw new KeyStoreException("key is not encoded as EncryptedPrivateKeyInfo");
             }
 
             KeyEntry entry = new KeyEntry();
             entry.date = new Date();
 
             entry.protectedPrivKey = key.clone();
-            if ((chain != null) &&
-                (chain.length != 0)) {
+            if (chain != null && chain.length != 0) {
                 entry.chain = chain.clone();
             } else {
                 entry.chain = null;
@@ -334,21 +312,18 @@ abstract class JavaKeyStore extends KeyStoreSpi {
      * overridden by the given certificate.
      *
      * @param alias the alias name
-     * @param cert the certificate
-     *
-     * @exception KeyStoreException if the given alias already exists and does
-     * not identify a <i>trusted certificate entry</i>, or this operation
-     * fails for some other reason.
+     * @param cert  the certificate
+     * @throws KeyStoreException if the given alias already exists and does
+     *                           not identify a <i>trusted certificate entry</i>, or this operation
+     *                           fails for some other reason.
      */
     public void engineSetCertificateEntry(String alias, Certificate cert)
-        throws KeyStoreException
-    {
-        synchronized(entries) {
-
+            throws KeyStoreException {
+        synchronized (entries) {
             Object entry = entries.get(convertAlias(alias));
-            if ((entry != null) && (entry instanceof KeyEntry)) {
+            if (entry instanceof KeyEntry) {
                 throw new KeyStoreException
-                    ("Cannot overwrite own certificate");
+                        ("Cannot overwrite own certificate");
             }
 
             TrustedCertEntry trustedCertEntry = new TrustedCertEntry();
@@ -362,13 +337,9 @@ abstract class JavaKeyStore extends KeyStoreSpi {
      * Deletes the entry identified by the given alias from this keystore.
      *
      * @param alias the alias name
-     *
-     * @exception KeyStoreException if the entry cannot be removed.
      */
-    public void engineDeleteEntry(String alias)
-        throws KeyStoreException
-    {
-        synchronized(entries) {
+    public void engineDeleteEntry(String alias) {
+        synchronized (entries) {
             entries.remove(convertAlias(alias));
         }
     }
@@ -386,7 +357,6 @@ abstract class JavaKeyStore extends KeyStoreSpi {
      * Checks if the given alias exists in this keystore.
      *
      * @param alias the alias name
-     *
      * @return true if the alias exists, false otherwise
      */
     public boolean engineContainsAlias(String alias) {
@@ -411,11 +381,7 @@ abstract class JavaKeyStore extends KeyStoreSpi {
      */
     public boolean engineIsKeyEntry(String alias) {
         Object entry = entries.get(convertAlias(alias));
-        if ((entry != null) && (entry instanceof KeyEntry)) {
-            return true;
-        } else {
-            return false;
-        }
+        return entry instanceof KeyEntry;
     }
 
     /**
@@ -427,11 +393,7 @@ abstract class JavaKeyStore extends KeyStoreSpi {
      */
     public boolean engineIsCertificateEntry(String alias) {
         Object entry = entries.get(convertAlias(alias));
-        if ((entry != null) && (entry instanceof TrustedCertEntry)) {
-            return true;
-        } else {
-            return false;
-        }
+        return entry instanceof TrustedCertEntry;
     }
 
     /**
@@ -446,7 +408,6 @@ abstract class JavaKeyStore extends KeyStoreSpi {
      * element of that entry's certificate chain (if a chain exists).
      *
      * @param cert the certificate to match with.
-     *
      * @return the (alias) name of the first entry with matching certificate,
      * or null if no such entry exists in this keystore.
      */
@@ -457,9 +418,9 @@ abstract class JavaKeyStore extends KeyStoreSpi {
             String alias = e.nextElement();
             Object entry = entries.get(alias);
             if (entry instanceof TrustedCertEntry) {
-                certElem = ((TrustedCertEntry)entry).cert;
-            } else if (((KeyEntry)entry).chain != null) {
-                certElem = ((KeyEntry)entry).chain[0];
+                certElem = ((TrustedCertEntry) entry).cert;
+            } else if (entry != null && ((KeyEntry) entry).chain != null) {
+                certElem = ((KeyEntry) entry).chain[0];
             } else {
                 continue;
             }
@@ -474,19 +435,17 @@ abstract class JavaKeyStore extends KeyStoreSpi {
      * Stores this keystore to the given output stream, and protects its
      * integrity with the given password.
      *
-     * @param stream the output stream to which this keystore is written.
+     * @param stream   the output stream to which this keystore is written.
      * @param password the password to generate the keystore integrity check
-     *
-     * @exception IOException if there was an I/O problem with data
-     * @exception NoSuchAlgorithmException if the appropriate data integrity
-     * algorithm could not be found
-     * @exception CertificateException if any of the certificates included in
-     * the keystore data could not be stored
+     * @throws IOException              if there was an I/O problem with data
+     * @throws NoSuchAlgorithmException if the appropriate data integrity
+     *                                  algorithm could not be found
+     * @throws CertificateException     if any of the certificates included in
+     *                                  the keystore data could not be stored
      */
     public void engineStore(OutputStream stream, char[] password)
-        throws IOException, NoSuchAlgorithmException, CertificateException
-    {
-        synchronized(entries) {
+            throws IOException, NoSuchAlgorithmException, CertificateException {
+        synchronized (entries) {
             /*
              * KEYSTORE FORMAT:
              *
@@ -527,8 +486,7 @@ abstract class JavaKeyStore extends KeyStoreSpi {
             byte[] encoded; // the certificate encoding
 
             MessageDigest md = getPreKeyedHash(password);
-            DataOutputStream dos
-                = new DataOutputStream(new DigestOutputStream(stream, md));
+            DataOutputStream dos = new DataOutputStream(new DigestOutputStream(stream, md));
 
             dos.writeInt(MAGIC);
             // always write the latest version
@@ -536,7 +494,7 @@ abstract class JavaKeyStore extends KeyStoreSpi {
 
             dos.writeInt(entries.size());
 
-            for (Enumeration<String> e = entries.keys(); e.hasMoreElements();) {
+            for (Enumeration<String> e = entries.keys(); e.hasMoreElements(); ) {
 
                 String alias = e.nextElement();
                 Object entry = entries.get(alias);
@@ -550,23 +508,23 @@ abstract class JavaKeyStore extends KeyStoreSpi {
                     dos.writeUTF(alias);
 
                     // Write the (entry creation) date
-                    dos.writeLong(((KeyEntry)entry).date.getTime());
+                    dos.writeLong(((KeyEntry) entry).date.getTime());
 
                     // Write the protected private key
-                    dos.writeInt(((KeyEntry)entry).protectedPrivKey.length);
-                    dos.write(((KeyEntry)entry).protectedPrivKey);
+                    dos.writeInt(((KeyEntry) entry).protectedPrivKey.length);
+                    dos.write(((KeyEntry) entry).protectedPrivKey);
 
                     // Write the certificate chain
                     int chainLen;
-                    if (((KeyEntry)entry).chain == null) {
+                    if (((KeyEntry) entry).chain == null) {
                         chainLen = 0;
                     } else {
-                        chainLen = ((KeyEntry)entry).chain.length;
+                        chainLen = ((KeyEntry) entry).chain.length;
                     }
                     dos.writeInt(chainLen);
                     for (int i = 0; i < chainLen; i++) {
-                        encoded = ((KeyEntry)entry).chain[i].getEncoded();
-                        dos.writeUTF(((KeyEntry)entry).chain[i].getType());
+                        encoded = ((KeyEntry) entry).chain[i].getEncoded();
+                        dos.writeUTF(((KeyEntry) entry).chain[i].getType());
                         dos.writeInt(encoded.length);
                         dos.write(encoded);
                     }
@@ -579,11 +537,11 @@ abstract class JavaKeyStore extends KeyStoreSpi {
                     dos.writeUTF(alias);
 
                     // Write the (entry creation) date
-                    dos.writeLong(((TrustedCertEntry)entry).date.getTime());
+                    dos.writeLong(((TrustedCertEntry) entry).date.getTime());
 
                     // Write the trusted certificate
-                    encoded = ((TrustedCertEntry)entry).cert.getEncoded();
-                    dos.writeUTF(((TrustedCertEntry)entry).cert.getType());
+                    encoded = ((TrustedCertEntry) entry).cert.getEncoded();
+                    dos.writeUTF(((TrustedCertEntry) entry).cert.getType());
                     dos.writeInt(encoded.length);
                     dos.write(encoded);
                 }
@@ -594,7 +552,7 @@ abstract class JavaKeyStore extends KeyStoreSpi {
              * the keystore (such as deleting or modifying key or
              * certificate entries).
              */
-            byte digest[] = md.digest();
+            byte[] digest = md.digest();
 
             dos.write(digest);
             dos.flush();
@@ -607,27 +565,25 @@ abstract class JavaKeyStore extends KeyStoreSpi {
      * <p>If a password is given, it is used to check the integrity of the
      * keystore data. Otherwise, the integrity of the keystore is not checked.
      *
-     * @param stream the input stream from which the keystore is loaded
+     * @param stream   the input stream from which the keystore is loaded
      * @param password the (optional) password used to check the integrity of
-     * the keystore.
-     *
-     * @exception IOException if there is an I/O or format problem with the
-     * keystore data
-     * @exception NoSuchAlgorithmException if the algorithm used to check
-     * the integrity of the keystore cannot be found
-     * @exception CertificateException if any of the certificates in the
-     * keystore could not be loaded
+     *                 the keystore.
+     * @throws IOException              if there is an I/O or format problem with the
+     *                                  keystore data
+     * @throws NoSuchAlgorithmException if the algorithm used to check
+     *                                  the integrity of the keystore cannot be found
+     * @throws CertificateException     if any of the certificates in the
+     *                                  keystore could not be loaded
      */
     public void engineLoad(InputStream stream, char[] password)
-        throws IOException, NoSuchAlgorithmException, CertificateException
-    {
-        synchronized(entries) {
+            throws IOException, NoSuchAlgorithmException, CertificateException {
+        synchronized (entries) {
             DataInputStream dis;
             MessageDigest md = null;
             CertificateFactory cf = null;
             Hashtable<String, CertificateFactory> cfs = null;
-            ByteArrayInputStream bais = null;
-            byte[] encoded = null;
+            ByteArrayInputStream bais;
+            byte[] encoded;
 
             if (stream == null)
                 return;
@@ -644,8 +600,7 @@ abstract class JavaKeyStore extends KeyStoreSpi {
             int xMagic = dis.readInt();
             int xVersion = dis.readInt();
 
-            if (xMagic!=MAGIC ||
-                (xVersion!=VERSION_1 && xVersion!=VERSION_2)) {
+            if (xMagic != MAGIC || (xVersion != VERSION_1 && xVersion != VERSION_2)) {
                 throw new IOException("Invalid keystore format");
             }
 
@@ -653,7 +608,7 @@ abstract class JavaKeyStore extends KeyStoreSpi {
                 cf = CertificateFactory.getInstance("X509");
             } else {
                 // version 2
-                cfs = new Hashtable<String, CertificateFactory>(3);
+                cfs = new Hashtable<>(3);
             }
 
             entries.clear();
@@ -676,14 +631,12 @@ abstract class JavaKeyStore extends KeyStoreSpi {
                     entry.date = new Date(dis.readLong());
 
                     // Read the private key
-                    entry.protectedPrivKey =
-                            IOUtils.readFully(dis, dis.readInt(), true);
+                    entry.protectedPrivKey = IOUtils.readFully(dis, dis.readInt(), true);
 
                     // Read the certificate chain
                     int numOfCerts = dis.readInt();
                     if (numOfCerts > 0) {
-                        List<Certificate> certs = new ArrayList<>(
-                                numOfCerts > 10 ? 10 : numOfCerts);
+                        List<Certificate> certs = new ArrayList<>(Math.min(numOfCerts, 10));
                         for (int j = 0; j < numOfCerts; j++) {
                             if (xVersion == 2) {
                                 // read the certificate type, and instantiate a
@@ -760,17 +713,15 @@ abstract class JavaKeyStore extends KeyStoreSpi {
              * with
              */
             if (password != null) {
-                byte computed[], actual[];
+                byte[] computed, actual;
                 computed = md.digest();
                 actual = new byte[computed.length];
                 dis.readFully(actual);
                 for (int i = 0; i < computed.length; i++) {
                     if (computed[i] != actual[i]) {
-                        Throwable t = new UnrecoverableKeyException
-                            ("Password verification failed");
-                        throw (IOException)new IOException
-                            ("Keystore was tampered with, or "
-                            + "password was incorrect").initCause(t);
+                        Throwable t = new UnrecoverableKeyException("Password verification failed");
+                        throw (IOException) new IOException("Keystore was tampered with, or "
+                                + "password was incorrect").initCause(t);
                     }
                 }
             }
@@ -781,21 +732,19 @@ abstract class JavaKeyStore extends KeyStoreSpi {
      * To guard against tampering with the keystore, we append a keyed
      * hash with a bit of whitener.
      */
-    private MessageDigest getPreKeyedHash(char[] password)
-        throws NoSuchAlgorithmException, UnsupportedEncodingException
-    {
+    private MessageDigest getPreKeyedHash(char[] password) throws NoSuchAlgorithmException {
         int i, j;
 
         MessageDigest md = MessageDigest.getInstance("SHA");
         byte[] passwdBytes = new byte[password.length * 2];
-        for (i=0, j=0; i<password.length; i++) {
-            passwdBytes[j++] = (byte)(password[i] >> 8);
-            passwdBytes[j++] = (byte)password[i];
+        for (i = 0, j = 0; i < password.length; i++) {
+            passwdBytes[j++] = (byte) (password[i] >> 8);
+            passwdBytes[j++] = (byte) password[i];
         }
         md.update(passwdBytes);
-        for (i=0; i<passwdBytes.length; i++)
+        for (i = 0; i < passwdBytes.length; i++)
             passwdBytes[i] = 0;
-        md.update("Mighty Aphrodite".getBytes("UTF8"));
+        md.update("Mighty Aphrodite".getBytes(StandardCharsets.UTF_8));
         return md;
     }
 }

@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2021 Muntashir Al-Islam
  * Copyright (c) 1996, 2006, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
@@ -28,10 +29,8 @@ package android.sun.security.util;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.math.BigInteger;
+import java.util.Calendar;
 import java.util.Date;
-
-import android.sun.util.calendar.CalendarDate;
-import android.sun.util.calendar.CalendarSystem;
 
 /**
  * DER input buffer ... this is the main abstraction in the DER library
@@ -44,7 +43,9 @@ import android.sun.util.calendar.CalendarSystem;
  */
 class DerInputBuffer extends ByteArrayInputStream implements Cloneable {
 
-    DerInputBuffer(byte[] buf) { super(buf); }
+    DerInputBuffer(byte[] buf) {
+        super(buf);
+    }
 
     DerInputBuffer(byte[] buf, int offset, int len) {
         super(buf, offset, len);
@@ -52,7 +53,7 @@ class DerInputBuffer extends ByteArrayInputStream implements Cloneable {
 
     DerInputBuffer dup() {
         try {
-            DerInputBuffer retval = (DerInputBuffer)clone();
+            DerInputBuffer retval = (DerInputBuffer) clone();
 
             retval.mark(Integer.MAX_VALUE);
             return retval;
@@ -62,10 +63,10 @@ class DerInputBuffer extends ByteArrayInputStream implements Cloneable {
     }
 
     byte[] toByteArray() {
-        int     len = available();
+        int len = available();
         if (len <= 0)
             return null;
-        byte[]  retval = new byte[len];
+        byte[] retval = new byte[len];
 
         System.arraycopy(buf, pos, retval, 0, len);
         return retval;
@@ -84,7 +85,7 @@ class DerInputBuffer extends ByteArrayInputStream implements Cloneable {
      */
     public boolean equals(Object other) {
         if (other instanceof DerInputBuffer)
-            return equals((DerInputBuffer)other);
+            return equals((DerInputBuffer) other);
         else
             return false;
     }
@@ -129,9 +130,10 @@ class DerInputBuffer extends ByteArrayInputStream implements Cloneable {
     /**
      * Returns the integer which takes up the specified number
      * of bytes in this buffer as a BigInteger.
-     * @param len the number of bytes to use.
+     *
+     * @param len          the number of bytes to use.
      * @param makePositive whether to always return a positive value,
-     *   irrespective of actual encoding
+     *                     irrespective of actual encoding
      * @return the integer as a BigInteger.
      */
     BigInteger getBigInteger(int len, boolean makePositive) throws IOException {
@@ -157,11 +159,12 @@ class DerInputBuffer extends ByteArrayInputStream implements Cloneable {
     /**
      * Returns the integer which takes up the specified number
      * of bytes in this buffer.
-     * @throws IOException if the result is not within the valid
-     * range for integer, i.e. between Integer.MIN_VALUE and
-     * Integer.MAX_VALUE.
+     *
      * @param len the number of bytes to use.
      * @return the integer.
+     * @throws IOException if the result is not within the valid
+     *                     range for integer, i.e. between Integer.MIN_VALUE and
+     *                     Integer.MAX_VALUE.
      */
     public int getInteger(int len) throws IOException {
 
@@ -222,7 +225,7 @@ class DerInputBuffer extends ByteArrayInputStream implements Cloneable {
          */
         int len = available();
         int unusedBits = buf[pos] & 0xff;
-        if (unusedBits > 7 ) {
+        if (unusedBits > 7) {
             throw new IOException("Invalid value for unused bits: " + unusedBits);
         }
         byte[] bits = new byte[len - 1];
@@ -239,6 +242,7 @@ class DerInputBuffer extends ByteArrayInputStream implements Cloneable {
     /**
      * Returns the UTC Time value that takes up the specified number
      * of bytes in this buffer.
+     *
      * @param len the number of bytes to use
      */
     public Date getUTCTime(int len) throws IOException {
@@ -254,6 +258,7 @@ class DerInputBuffer extends ByteArrayInputStream implements Cloneable {
     /**
      * Returns the Generalized Time value that takes up the specified
      * number of bytes in this buffer.
+     *
      * @param len the number of bytes to use
      */
     public Date getGeneralizedTime(int len) throws IOException {
@@ -269,9 +274,10 @@ class DerInputBuffer extends ByteArrayInputStream implements Cloneable {
 
     /**
      * Private helper routine to extract time from the der value.
-     * @param len the number of bytes to use
+     *
+     * @param len         the number of bytes to use
      * @param generalized true if Generalized Time is to be read, false
-     * if UTC Time is to be read.
+     *                    if UTC Time is to be read.
      */
     private Date getTime(int len, boolean generalized) throws IOException {
 
@@ -294,37 +300,35 @@ class DerInputBuffer extends ByteArrayInputStream implements Cloneable {
          */
 
         int year, month, day, hour, minute, second, millis;
-        String type = null;
+        String type;
 
         if (generalized) {
             type = "Generalized";
-            year = 1000 * Character.digit((char)buf[pos++], 10);
-            year += 100 * Character.digit((char)buf[pos++], 10);
-            year += 10 * Character.digit((char)buf[pos++], 10);
-            year += Character.digit((char)buf[pos++], 10);
+            year = 1000 * Character.digit((char) buf[pos++], 10);
+            year += 100 * Character.digit((char) buf[pos++], 10);
+            year += 10 * Character.digit((char) buf[pos++], 10);
+            year += Character.digit((char) buf[pos++], 10);
             len -= 2; // For the two extra YY
         } else {
             type = "UTC";
-            year = 10 * Character.digit((char)buf[pos++], 10);
-            year += Character.digit((char)buf[pos++], 10);
+            year = 10 * Character.digit((char) buf[pos++], 10);
+            year += Character.digit((char) buf[pos++], 10);
 
-            if (year < 50)              // origin 2000
-                year += 2000;
-            else
-                year += 1900;   // origin 1900
+            if (year < 50) year += 2000;  // origin 2000
+            else year += 1900;  // origin 1900
         }
 
-        month = 10 * Character.digit((char)buf[pos++], 10);
-        month += Character.digit((char)buf[pos++], 10);
+        month = 10 * Character.digit((char) buf[pos++], 10);
+        month += Character.digit((char) buf[pos++], 10);
 
-        day = 10 * Character.digit((char)buf[pos++], 10);
-        day += Character.digit((char)buf[pos++], 10);
+        day = 10 * Character.digit((char) buf[pos++], 10);
+        day += Character.digit((char) buf[pos++], 10);
 
-        hour = 10 * Character.digit((char)buf[pos++], 10);
-        hour += Character.digit((char)buf[pos++], 10);
+        hour = 10 * Character.digit((char) buf[pos++], 10);
+        hour += Character.digit((char) buf[pos++], 10);
 
-        minute = 10 * Character.digit((char)buf[pos++], 10);
-        minute += Character.digit((char)buf[pos++], 10);
+        minute = 10 * Character.digit((char) buf[pos++], 10);
+        minute += Character.digit((char) buf[pos++], 10);
 
         len -= 10; // YYMMDDhhmm
 
@@ -336,97 +340,92 @@ class DerInputBuffer extends ByteArrayInputStream implements Cloneable {
 
         millis = 0;
         if (len > 2 && len < 12) {
-            second = 10 * Character.digit((char)buf[pos++], 10);
-            second += Character.digit((char)buf[pos++], 10);
+            second = 10 * Character.digit((char) buf[pos++], 10);
+            second += Character.digit((char) buf[pos++], 10);
             len -= 2;
             // handle fractional seconds (if present)
             if (buf[pos] == '.' || buf[pos] == ',') {
-                len --;
+                len--;
                 pos++;
-                // handle upto milisecond precision only
+                // handle upto millisecond precision only
                 int precision = 0;
                 int peek = pos;
-                while (buf[peek] != 'Z' &&
-                       buf[peek] != '+' &&
-                       buf[peek] != '-') {
+                while (buf[peek] != 'Z' && buf[peek] != '+' && buf[peek] != '-') {
                     peek++;
                     precision++;
                 }
                 switch (precision) {
-                case 3:
-                    millis += 100 * Character.digit((char)buf[pos++], 10);
-                    millis += 10 * Character.digit((char)buf[pos++], 10);
-                    millis += Character.digit((char)buf[pos++], 10);
-                    break;
-                case 2:
-                    millis += 100 * Character.digit((char)buf[pos++], 10);
-                    millis += 10 * Character.digit((char)buf[pos++], 10);
-                    break;
-                case 1:
-                    millis += 100 * Character.digit((char)buf[pos++], 10);
-                    break;
-                default:
+                    case 3:
+                        millis += 100 * Character.digit((char) buf[pos++], 10);
+                        millis += 10 * Character.digit((char) buf[pos++], 10);
+                        millis += Character.digit((char) buf[pos++], 10);
+                        break;
+                    case 2:
+                        millis += 100 * Character.digit((char) buf[pos++], 10);
+                        millis += 10 * Character.digit((char) buf[pos++], 10);
+                        break;
+                    case 1:
+                        millis += 100 * Character.digit((char) buf[pos++], 10);
+                        break;
+                    default:
                         throw new IOException("Parse " + type +
-                            " time, unsupported precision for seconds value");
+                                " time, unsupported precision for seconds value");
                 }
                 len -= precision;
             }
-        } else
-            second = 0;
+        } else second = 0;
 
-        if (month == 0 || day == 0
-            || month > 12 || day > 31
-            || hour >= 24 || minute >= 60 || second >= 60)
+        if (month == 0 || day == 0 || month > 12 || day > 31 || hour >= 24 || minute >= 60 || second >= 60) {
             throw new IOException("Parse " + type + " time, invalid format");
+        }
 
         /*
          * Generalized time can theoretically allow any precision,
          * but we're not supporting that.
          */
-        CalendarSystem gcal = CalendarSystem.getGregorianCalendar();
-        CalendarDate date = gcal.newCalendarDate(null); // no time zone
-        date.setDate(year, month, day);
-        date.setTimeOfDay(hour, minute, second, millis);
-        long time = gcal.getTime(date);
+        Calendar cal = Calendar.getInstance();
+        cal.set(year, month, day, hour, minute, second);
+        cal.setTimeInMillis(millis);
+        long time = cal.getTimeInMillis();
 
         /*
          * Finally, "Z" or "+hhmm" or "-hhmm" ... offsets change hhmm
          */
-        if (! (len == 1 || len == 5))
+        if (!(len == 1 || len == 5))
             throw new IOException("Parse " + type + " time, invalid offset");
 
         int hr, min;
 
         switch (buf[pos++]) {
-        case '+':
-            hr = 10 * Character.digit((char)buf[pos++], 10);
-            hr += Character.digit((char)buf[pos++], 10);
-            min = 10 * Character.digit((char)buf[pos++], 10);
-            min += Character.digit((char)buf[pos++], 10);
+            case '+':
+                hr = 10 * Character.digit((char) buf[pos++], 10);
+                hr += Character.digit((char) buf[pos++], 10);
+                min = 10 * Character.digit((char) buf[pos++], 10);
+                min += Character.digit((char) buf[pos++], 10);
 
-            if (hr >= 24 || min >= 60)
-                throw new IOException("Parse " + type + " time, +hhmm");
+                if (hr >= 24 || min >= 60)
+                    throw new IOException("Parse " + type + " time, +hhmm");
 
-            time -= ((hr * 60) + min) * 60 * 1000;
-            break;
+                time -= ((hr * 60L) + min) * 60 * 1000;
+                break;
 
-        case '-':
-            hr = 10 * Character.digit((char)buf[pos++], 10);
-            hr += Character.digit((char)buf[pos++], 10);
-            min = 10 * Character.digit((char)buf[pos++], 10);
-            min += Character.digit((char)buf[pos++], 10);
+            case '-':
+                hr = 10 * Character.digit((char) buf[pos++], 10);
+                hr += Character.digit((char) buf[pos++], 10);
+                min = 10 * Character.digit((char) buf[pos++], 10);
+                min += Character.digit((char) buf[pos++], 10);
 
-            if (hr >= 24 || min >= 60)
-                throw new IOException("Parse " + type + " time, -hhmm");
+                if (hr >= 24 || min >= 60)
+                    throw new IOException("Parse " + type + " time, -hhmm");
 
-            time += ((hr * 60) + min) * 60 * 1000;
-            break;
+                time += ((hr * 60L) + min) * 60 * 1000;
+                break;
 
-        case 'Z':
-            break;
+            case 'Z':
+                break;
 
-        default:
-            throw new IOException("Parse " + type + " time, garbage offset");
+            default:
+                throw new IOException("Parse " + type + " time, garbage offset");
         }
         return new Date(time);
     }
